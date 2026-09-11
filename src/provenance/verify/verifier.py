@@ -96,18 +96,43 @@ def verify_from_raw(
         record.error = str(e)
         # sigstore-python's verify_dsse is one all-or-nothing call: on
         # failure we know verification-as-a-whole didn't succeed, but not
-        # which sub-check first broke. Best-effort classify from the
-        # message; anything we can't confidently attribute stays `None`
-        # ("not reached") rather than `False` ("checked and failed") — see
-        # VerificationRecord's docstring on that distinction.
+        # which sub-check first broke. Every failure path raises the same
+        # flat `VerificationError` with no error code (sigstore's
+        # errors.py), so message text is the only signal available — and
+        # it isn't a documented API contract, just log wording that a
+        # sigstore-python upgrade can reword without notice.
+        #
+        # So this matches on specific substrings observed at the actual
+        # `raise` sites (checked against sigstore==4.5.0's
+        # verify/verifier.py, dsse/__init__.py, and
+        # _internal/rekor/checkpoint.py) rather than loose tokens like
+        # "cert" or "signature", which show up in more than one category's
+        # messages (e.g. the SCT failure message itself says "...on
+        # signing certificate") and would misfire across the elif chain.
+        # A message that doesn't unambiguously match a category — e.g.
+        # "not enough sources of verified time" (no check reached yet) or
+        # a cert-profile failure like "Key usage is not of type ..."
+        # (there's no VerificationRecord field for that) — leaves all four
+        # fields `None` ("not reached") rather than guessing. A wrong,
+        # specific `False` overclaims more than an honest "don't know" —
+        # see VerificationRecord's docstring on the None-vs-False
+        # distinction.
         msg = str(e).lower()
-        if "sct" in msg:
+        if "failed to verify sct" in msg:
             record.sct_verified = False
-        elif "log entry" in msg or "tlog" in msg or "rekor" in msg:
+        elif "log entry" in msg:
+            # Covers both the wrapped inclusion/checkpoint failures
+            # ("invalid log entry: ...") and the step-8 body-consistency
+            # checks, which mention "log entry" directly (e.g. "log entry
+            # payload hash does not match bundle").
             record.tlog_verified = False
-        elif "chain" in msg or "certificate" in msg or "cert" in msg:
+        elif "certificate chain" in msg or "signing cert" in msg:
+            # "failed to build timestamp certificate chain: ..." (chain
+            # build) and "invalid signing cert: expired at time of
+            # signing, ..." (validity-period check) — both about the
+            # cert's trust path, not the DSSE signature itself.
             record.chain_verified = False
-        else:
+        elif "dsse" in msg or "signature is invalid" in msg or "bundle message" in msg:
             record.signature_verified = False
         return record
 

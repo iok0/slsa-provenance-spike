@@ -130,6 +130,16 @@ Output is a **structured record**, not a boolean - see SPIKE.md's VERIFY section
 fields (`signature_verified`, `chain_verified`, `sct_verified`, `tlog_verified`, `identity`,
 `issuer`, `policy_identity_matched`, `verified_at`, `trust_root`).
 
+sigstore-python's `verify_dsse` runs steps 1-4 above as one all-or-nothing call and raises a
+single flat `VerificationError` with no error code on any failure, so the four check fields
+above can't be read straight off a return value on the failure path. `verifier.py` classifies
+which check broke from the exception's message text against an allowlist of substrings
+observed at `sigstore==4.5.0`'s actual `raise` sites (message text isn't a documented contract,
+so a sigstore-python upgrade can reword these without notice). A message that doesn't
+unambiguously match leaves all four fields `None` rather than guessing - per
+`VerificationRecord`'s None-vs-False distinction (models/verification.py), a wrong specific
+`False` overclaims more than an honest "don't know."
+
 ## Trust-root rotation and re-verification
 
 The "trust root" is the set: Fulcio CA cert(s), Rekor public key(s), CT log key(s), TSA

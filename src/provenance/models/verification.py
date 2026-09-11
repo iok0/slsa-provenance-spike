@@ -16,13 +16,21 @@ from pydantic import BaseModel
 class VerificationRecord(BaseModel):
     """Outcome of verifying one raw envelope's DSSE signature over PAE.
 
-    A field is `None` when that check was never reached — e.g. the
-    signature itself didn't verify, so cert-chain building, SCT, and tlog
-    inclusion were never attempted — distinct from `False`, which means the
-    check ran and failed. Collapsing "not reached" into "failed" would let
-    this record imply more certainty than verification actually earned,
-    which is precisely the discipline the README's evidence→facts→decisions
-    model is about.
+    A field is `None` when that check was never reached, or when it can't be
+    confirmed to have run — distinct from `False`, which means the check
+    specifically ran and failed. This matters because sigstore-python's
+    `verify_dsse` is a single all-or-nothing call: on failure, the ingest
+    path (`verify.verifier.verify_from_raw`) classifies which of the four
+    checks broke from the exception's message text, on an allowlisted,
+    best-effort basis (message text isn't a documented API contract). A
+    message it can't unambiguously attribute to one check leaves all four
+    `None` rather than guessing — including cases where sigstore-python
+    verified chain/SCT/tlog internally before failing later on the DSSE
+    signature itself, since a thrown exception gives this caller no partial
+    result to record. Collapsing "unknown" into "failed" would let this
+    record imply more certainty than verification actually earned, which is
+    precisely the discipline the README's evidence→facts→decisions model is
+    about.
 
     `identity` / `issuer` are read off the leaf certificate's SAN and OIDC
     issuer extension regardless of whether verification passed — they are
