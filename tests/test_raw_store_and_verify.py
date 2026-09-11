@@ -9,11 +9,22 @@ Two things get proved here, matching the README's demo moments:
    the raw store's integrity guarantee is real, not just content-addressed
    bookkeeping.
 
-Fixture provenance: tests/fixtures/bundles/ruff-0.16.7-linux-x86_64-slsa-v1/
-is a real SLSA v1.0 attestation for a real astral-sh/ruff release binary,
-fetched read-only from GitHub's attestations API
-(GET /repos/{owner}/{repo}/attestations/{digest}) — see meta.json alongside
-it and scripts/fetch_github_attestation.py for how.
+Two independently-signed real fixtures are used, on purpose — this is also
+the pair Deliverable 4's normalizer convergence test consumes, so
+"verified from raw" and "normalizes to the same canonical shape" are shown
+on the same two real bundles, not different ones for each claim:
+
+- tests/fixtures/bundles/ruff-0.16.7-linux-x86_64-slsa-v1/ — SLSA v1.0,
+  builder = GitHub-native `actions/attest-build-provenance`. Fetched
+  read-only from GitHub's attestations API
+  (GET /repos/{owner}/{repo}/attestations/{digest}); see meta.json and
+  scripts/fetch_github_attestation.py.
+- tests/fixtures/bundles/scorecard-5.5.0-darwin-amd64-slsa-v0.2/ — SLSA
+  v0.2, builder = slsa-framework/slsa-github-generator's reusable workflow
+  (a different builder identity *and* a different predicate shape — see
+  README's v0.2/v1.0 table). Fetched read-only via a plain HTTPS GET of
+  the public release asset; see meta.json for exactly which line of that
+  asset this is and why.
 """
 
 from __future__ import annotations
@@ -75,6 +86,31 @@ def test_verify_from_raw_succeeds_on_real_bundle(store):
     )
     assert record.issuer == "https://token.actions.githubusercontent.com"
     assert record.policy_identity_matched is None  # not asserted at this layer
+
+
+def test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version(store):
+    """The other half of demo moment 1's pair: a real SLSA v0.2 bundle,
+    independently signed by a different builder, also verifies from raw."""
+    raw = _load_bundle_bytes("scorecard-5.5.0-darwin-amd64-slsa-v0.2")
+    digest = store.put(raw)
+
+    record = verify_from_raw(store.get(digest), raw_digest=digest)
+
+    assert record.fully_verified, record.error
+    assert record.payload_type == "application/vnd.in-toto+json"
+    assert record.identity == (
+        "https://github.com/slsa-framework/slsa-github-generator/"
+        ".github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"
+    )
+    assert record.issuer == "https://token.actions.githubusercontent.com"
+
+    # Different builder from the ruff fixture above, on purpose — this is
+    # what makes it a real convergence test later, not two copies of the
+    # same evidence.
+    assert record.identity != (
+        "https://github.com/astral-sh/ruff/.github/workflows/release.yml"
+        "@refs/heads/main"
+    )
 
 
 def test_byte_flip_breaks_verification(store):

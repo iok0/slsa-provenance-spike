@@ -1,0 +1,13 @@
+{
+  "source": "github_release_asset",
+  "download_url": "https://github.com/ossf/scorecard/releases/download/v5.5.0/multiple.intoto.jsonl",
+  "repo": "ossf/scorecard",
+  "release_tag": "v5.5.0",
+  "subject_name": "scorecard_5.5.0_darwin_amd64.tar.gz",
+  "subject_digest": "sha256:979487ca20e726f6a4d2bd63a0a4c544184f589724b3d12d2ba8d0ea80889063",
+  "predicate_type": "https://slsa.dev/provenance/v0.2",
+  "statement_type": "https://in-toto.io/Statement/v1",
+  "builder_identity": "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0",
+  "fetched_at": "2026-09-11T11:09:40.207215+00:00",
+  "note": "Despite the \"multiple.intoto.jsonl\" filename (a legacy naming convention from when this asset held one line per released binary), this download contains exactly one line / one Sigstore Bundle, for exactly one subject (scorecard_5.5.0_darwin_amd64.tar.gz) \u2014 verified by content inspection before saving, not assumed from the filename. It packages as a full Sigstore Bundle (mediaType vnd.dev.sigstore.bundle.v0.3+json), not the older bare-DSSE form used by earlier scorecard releases, so it verifies via the same Bundle.from_json() path as the GitHub-native v1.0 fixture \u2014 no legacy-format handling needed. Fetched read-only via a plain HTTPS GET of the public release asset."
+}
