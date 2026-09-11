@@ -1,7 +1,9 @@
 # Private planning docs — not part of the submitted artifact.
-# See CRYPTOGRAPHY.md (kept, it's reference material) vs these (strategy notes).
+# See CRYPTOGRAPHY.md (kept, it's reference material) vs these (working
+# notes / strategy, feeding the README rather than being it).
 SPIKE.md
 jobdescription.txt
+implementation_learnings.md
 
 # Python
 __pycache__/
