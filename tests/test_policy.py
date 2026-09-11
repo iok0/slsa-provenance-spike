@@ -57,6 +57,12 @@ def _minimal_verification(**overrides) -> VerificationRecord:
         sct_verified=True,
         tlog_verified=True,
         issuer="https://token.actions.githubusercontent.com",
+        # Matches _minimal_provenance's default builder_id — the identity
+        # the signature actually attests to. Override both together when a
+        # test needs a different builder; a mismatch is what
+        # test_constructed_builder_id_identity_mismatch_is_denied exercises
+        # on purpose.
+        identity="https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main",
         verified_at=datetime.now(timezone.utc),
         trust_root="production",
     )
@@ -117,6 +123,29 @@ def test_constructed_issuer_mismatch_is_denied():
     assert any("acceptable-issuer" in r for r in decision.reasons)
 
 
+def test_constructed_builder_id_identity_mismatch_is_denied():
+    """A signer with an acceptable issuer cannot self-assert its way onto
+    the builder allowlist by writing someone else's builder_id into its
+    own predicate — the signature only proves who signed it, not that
+    builder_id is true. Neither real fixture reaches this branch (both
+    happen to have identity == builder_id by construction); constructed
+    to prove the check actually fires."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        # A real, acceptable-issuer signer — but *not* the identity
+        # matching the allow-listed builder_id below.
+        verification=_minimal_verification(
+            identity="https://github.com/some-other-repo/.github/workflows/ci.yml@refs/heads/main"
+        ),
+        provenance=_minimal_provenance(),  # builder_id defaults to ruff's allow-listed id
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert any("does not match the verified signing identity" in r for r in decision.reasons)
+
+
 def test_constructed_unverified_evidence_is_denied():
     item = EvidenceItem(
         raw_digest="deadbeef",
@@ -144,15 +173,17 @@ def test_constructed_conflicting_builder_identities_in_one_set_is_denied():
             }
         ),
     )
+    item_b_builder_id = (
+        "https://github.com/slsa-framework/slsa-github-generator/"
+        ".github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"
+    )
     item_b = EvidenceItem(
         raw_digest="bbb",
-        verification=_minimal_verification(raw_digest="bbb"),
-        provenance=_minimal_provenance(
-            builder_id=(
-                "https://github.com/slsa-framework/slsa-github-generator/"
-                ".github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"
-            )
-        ),
+        # identity overridden to match item_b's own builder_id override —
+        # this test is exercising the evidence-*set*-level disagreement
+        # check, not the per-item identity/builder_id check added above.
+        verification=_minimal_verification(raw_digest="bbb", identity=item_b_builder_id),
+        provenance=_minimal_provenance(builder_id=item_b_builder_id),
     )
 
     decision = evaluate([item_a, item_b])

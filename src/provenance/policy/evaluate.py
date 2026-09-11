@@ -42,6 +42,23 @@ demonstrated policy stance, not a hypothetical one: run against the two
 real fixtures in this repo, it denies both — for two different, worth-
 distinguishing reasons. See the README for why that's a finding worth
 keeping, not a bug to route around.
+
+## builder_id is only trustworthy if it matches who actually signed
+
+`builder_id` is NORMALISE output — a string read verbatim out of the
+signed payload's content. Verification proves the payload was signed by
+whoever held the cert's key; it says nothing about whether *that*
+identity was entitled to write this particular `builder_id` into its own
+predicate. Allowlisting on `builder_id` alone would let any signer with
+an acceptable issuer self-assert its way past the allowlist — the same
+"downstream layer implying more certainty than the layer beneath earned"
+mistake the rest of this codebase is built to avoid. So `_evaluate_item`
+requires `builder_id == item.verification.identity` (the cert SAN) before
+trusting an allowlist hit at all. For both real fixtures the two are
+equal by construction — GitHub-native `attest-build-provenance` and
+slsa-github-generator's reusable workflow both run in an isolated context
+the calling job can't write to — but the check exists for the builder
+that doesn't offer that isolation, not for these two.
 """
 
 from __future__ import annotations
@@ -103,7 +120,30 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
             "the acceptable-issuer list"
         )
 
+    # builder_id is NORMALISE output: a string read verbatim out of the
+    # signed *payload*. The signature proves who held the signing key: it
+    # proves nothing about whether that identity was entitled to write
+    # this particular builder_id into its own predicate. Trusting
+    # builder_id against the allowlist without first checking it equals
+    # the cert identity VERIFY actually attests to would let any signer
+    # with an acceptable issuer self-assert its way onto the allowlist —
+    # exactly the "downstream layer implying more certainty than the
+    # layer beneath earned" failure this whole model exists to prevent.
+    # For a non-falsifiable generator (both real fixtures) the two are
+    # always equal by construction; a builder that lets the calling job
+    # set its own builder_id is exactly the case this check is for.
     builder_id = item.provenance.builder_id
+    if builder_id != item.verification.identity:
+        reasons.append(
+            f"{item.raw_digest}: builder_id {builder_id!r} asserted in the "
+            f"provenance predicate does not match the verified signing "
+            f"identity {item.verification.identity!r} — builder_id is "
+            "self-asserted payload content, not itself verified, so it "
+            "cannot be trusted as an allowlist key unless it matches who "
+            "the cryptography says actually signed this"
+        )
+        return reasons
+
     claimed_level = _BUILDER_ALLOWLIST.get(builder_id)
     if claimed_level is None:
         reasons.append(f"{item.raw_digest}: builder {builder_id!r} not in allowlist")
