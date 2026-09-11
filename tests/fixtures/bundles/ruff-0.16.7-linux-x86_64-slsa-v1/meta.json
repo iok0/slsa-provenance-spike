@@ -1,0 +1,10 @@
+{
+  "source": "github_attestations_api",
+  "endpoint": "repos/astral-sh/ruff/attestations/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326",
+  "repo": "astral-sh/ruff",
+  "subject_digest": "sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326",
+  "predicate_type": "https://slsa.dev/provenance/v1",
+  "statement_type": "https://in-toto.io/Statement/v1",
+  "fetched_at": "2026-09-11T10:26:59.775452+00:00",
+  "note": "Fetched read-only via `gh api`; bundle.json is saved verbatim as returned."
+}

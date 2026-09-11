@@ -1,0 +1,27 @@
+# Private planning docs — not part of the submitted artifact.
+# See CRYPTOGRAPHY.md (kept, it's reference material) vs these (strategy notes).
+SPIKE.md
+jobdescription.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local runtime state (spike storage — see SPIKE.md's SQLite / local-blob-dir stack note)
+*.db
+*.sqlite3
+blobs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
