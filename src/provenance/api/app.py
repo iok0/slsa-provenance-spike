@@ -10,8 +10,9 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from provenance.api.demo_bootstrap import DemoData
-from provenance.api.models import ProvenanceRecordEntry, ProvenanceResponse
+from provenance.api.models import ProvenanceResponse
 from provenance.associate import associate
+from provenance.policy.evaluate import evaluate
 
 
 def create_app(data: DemoData) -> FastAPI:
@@ -29,19 +30,16 @@ def create_app(data: DemoData) -> FastAPI:
                 detail=f"no artifact for tenant={tenant_id!r} digest={digest!r}",
             )
 
-        entries = [
-            ProvenanceRecordEntry(
-                raw_digest=raw_digest,
-                verification=data.records_by_raw_digest[raw_digest].verification,
-                provenance=data.records_by_raw_digest[raw_digest].provenance,
-            )
+        evidence_set = [
+            data.records_by_raw_digest[raw_digest]
             for raw_digest in data.subject_index.get(digest, [])
         ]
 
         return ProvenanceResponse(
             artifact=artifact,
             association_basis=digest,
-            provenance_records=entries,
+            provenance_records=evidence_set,
+            trust_decision=evaluate(evidence_set),
         )
 
     return app

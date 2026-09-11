@@ -50,6 +50,11 @@ def test_get_provenance_for_known_ruff_artifact():
     assert record["provenance"]["predicate_type"] == "https://slsa.dev/provenance/v1"
     assert record["provenance"]["source_repo"] == "https://github.com/astral-sh/ruff"
 
+    # See policy/evaluate.py's module docstring: this is a real, decided
+    # DENY (self-hosted runner), not a placeholder or a bug.
+    assert body["trust_decision"]["outcome"] == "DENY"
+    assert any("not github-hosted" in r for r in body["trust_decision"]["reasons"])
+
 
 def test_get_provenance_for_known_scorecard_artifact():
     resp = _client().get(f"/v1/provenance/acme/{SCORECARD_DIGEST}")
@@ -61,6 +66,12 @@ def test_get_provenance_for_known_scorecard_artifact():
     record = body["provenance_records"][0]
     assert record["verification"]["signature_verified"] is True
     assert record["provenance"]["predicate_type"] == "https://slsa.dev/provenance/v0.2"
+
+    # Denied for a different real reason than ruff's — v0.2 exposes no
+    # runner-environment signal at all, so it can't be confirmed either
+    # way (see policy/evaluate.py).
+    assert body["trust_decision"]["outcome"] == "DENY"
+    assert any("cannot confirm" in r for r in body["trust_decision"]["reasons"])
 
 
 def test_unknown_digest_for_known_tenant_is_404():

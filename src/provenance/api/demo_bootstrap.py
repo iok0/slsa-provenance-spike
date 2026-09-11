@@ -29,25 +29,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from provenance.models.provenance import CanonicalProvenance
-from provenance.models.verification import VerificationRecord
+from provenance.models.evidence import EvidenceItem
 from provenance.normalize import normalize_from_raw, statement_from_raw
 from provenance.raw_store.store import RawEnvelopeStore
 from provenance.verify.verifier import verify_from_raw
 
 
 @dataclass
-class SeededRecord:
-    raw_digest: str
-    verification: VerificationRecord
-    provenance: CanonicalProvenance
-
-
-@dataclass
 class DemoData:
     store: RawEnvelopeStore
     subject_index: dict[str, list[str]] = field(default_factory=dict)
-    records_by_raw_digest: dict[str, SeededRecord] = field(default_factory=dict)
+    records_by_raw_digest: dict[str, EvidenceItem] = field(default_factory=dict)
 
 
 def seed_from_fixtures(bundle_paths: Sequence[Path]) -> DemoData:
@@ -56,13 +48,13 @@ def seed_from_fixtures(bundle_paths: Sequence[Path]) -> DemoData:
     subject digest its statement lists."""
     store = RawEnvelopeStore(Path(tempfile.mkdtemp()))
     subject_index: dict[str, list[str]] = defaultdict(list)
-    records: dict[str, SeededRecord] = {}
+    records: dict[str, EvidenceItem] = {}
 
     for path in bundle_paths:
         raw_bytes = path.read_bytes()
         raw_digest = store.put(raw_bytes)
 
-        records[raw_digest] = SeededRecord(
+        records[raw_digest] = EvidenceItem(
             raw_digest=raw_digest,
             verification=verify_from_raw(raw_bytes, raw_digest=raw_digest),
             provenance=normalize_from_raw(raw_bytes),
