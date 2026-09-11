@@ -1,0 +1,76 @@
+"""EXPOSE end-to-end: the /v1/ API over the two real fixtures.
+
+Also the only place associate() gets exercised — deliberately not a
+dedicated test module for it (see associate.py's docstring: "not a
+subsystem with its own tests").
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from provenance.api.app import create_app
+from provenance.api.demo_bootstrap import seed_from_fixtures
+
+FIXTURES = Path(__file__).parent / "fixtures" / "bundles"
+
+RUFF_DIGEST = "sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326"
+SCORECARD_DIGEST = "sha256:979487ca20e726f6a4d2bd63a0a4c544184f589724b3d12d2ba8d0ea80889063"
+
+
+def _client() -> TestClient:
+    data = seed_from_fixtures(
+        [
+            FIXTURES / "ruff-0.16.7-linux-x86_64-slsa-v1" / "bundle.json",
+            FIXTURES / "scorecard-5.5.0-darwin-amd64-slsa-v0.2" / "bundle.json",
+        ]
+    )
+    return TestClient(create_app(data))
+
+
+def test_get_provenance_for_known_ruff_artifact():
+    resp = _client().get(f"/v1/provenance/acme/{RUFF_DIGEST}")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["artifact"] == {
+        "tenant_id": "acme",
+        "repo": "acme-tools",
+        "package": "ruff",
+        "version": "0.16.7",
+        "file": "ruff-x86_64-unknown-linux-gnu.tar.gz",
+    }
+    assert body["association_basis"] == RUFF_DIGEST
+
+    assert len(body["provenance_records"]) == 1
+    record = body["provenance_records"][0]
+    assert record["verification"]["signature_verified"] is True
+    assert record["provenance"]["predicate_type"] == "https://slsa.dev/provenance/v1"
+    assert record["provenance"]["source_repo"] == "https://github.com/astral-sh/ruff"
+
+
+def test_get_provenance_for_known_scorecard_artifact():
+    resp = _client().get(f"/v1/provenance/acme/{SCORECARD_DIGEST}")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["artifact"]["package"] == "scorecard"
+    assert len(body["provenance_records"]) == 1
+    record = body["provenance_records"][0]
+    assert record["verification"]["signature_verified"] is True
+    assert record["provenance"]["predicate_type"] == "https://slsa.dev/provenance/v0.2"
+
+
+def test_unknown_digest_for_known_tenant_is_404():
+    resp = _client().get("/v1/provenance/acme/sha256:" + "0" * 64)
+    assert resp.status_code == 404
+
+
+def test_known_digest_wrong_tenant_is_404_not_leaked():
+    """The tenant-scoping property associate.py's docstring names as a
+    security boundary, not just identity-resolution correctness: a real
+    digest existing for a *different* tenant must not leak here."""
+    resp = _client().get(f"/v1/provenance/some-other-tenant/{RUFF_DIGEST}")
+    assert resp.status_code == 404
