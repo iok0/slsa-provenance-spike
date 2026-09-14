@@ -135,7 +135,7 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
 
     claimed_level = _BUILDER_ALLOWLIST.get(builder_id)
     if claimed_level is None:
-        reasons.append(f"{item.raw_digest}: builder {builder_id!r} not in allowlist")
+        reasons.append(f"{item.raw_digest}: builder {builder_id!r} not in builder allowlist")
     elif claimed_level < _REQUIRED_LEVEL:
         reasons.append(
             f"{item.raw_digest}: builder {builder_id!r} claims level "
