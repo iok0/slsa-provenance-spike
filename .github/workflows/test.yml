@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install
+        # --locked fails the build instead of silently re-resolving if
+        # pyproject.toml and uv.lock ever disagree (e.g. someone edits a
+        # dependency range without regenerating the lock).
+        run: uv sync --locked --extra dev
+
+      - name: Test
+        # Note: verification against the two real fixtures depends on a
+        # live TUF trust-root fetch (Verifier.production()) — a named,
+        # present flakiness risk, not a hypothetical one. See
+        # implementation_learnings.md / the README.
+        run: uv run pytest -v

@@ -4,16 +4,26 @@ version = "0.1.0"
 description = "Provenance ingestion spike: raw-preserving store, Sigstore verification, versioned SLSA normalizers, canonical provenance model."
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
-    "pydantic>=2.8",
-    "sigstore>=3.6",
+    "fastapi>=0.141,<0.142",
+    "uvicorn[standard]>=0.52,<0.53",
+    "pydantic>=2.13,<3",
+    # Exact pins, not ranges: this is the code that verifies signatures.
+    # Every change — patch or otherwise — should arrive as a Dependabot/
+    # Renovate PR someone reads, not something a resolver picks silently.
+    "sigstore==4.5.0",
+    # Both imported directly in verify/verifier.py (cert SAN + Fulcio OIDC-
+    # issuer extension decoding) — declared explicitly even though sigstore
+    # already pulls them in transitively, since this code depends on their
+    # API directly, not just incidentally on whatever sigstore happens to
+    # vendor.
+    "cryptography==50.0.1",
+    "pyasn1==0.6.4",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
-    "httpx>=0.27",
+    "pytest>=9.1,<10",
+    "httpx>=0.28,<0.29",
 ]
 
 [build-system]
