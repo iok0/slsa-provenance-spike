@@ -23,8 +23,8 @@ README names in full but this function does not implement:
   not one fixed level. Out of scope here — file digests only, matching
   what both real fixtures actually are. (OCI is also exactly the kind of
   format `ArtifactRef.format_namespace` exists for — a per-format
-  sub-scope, not the platform's own account-level "namespace" — so this and
-  that field are the same unbuilt generalization, not two independent
+  sub-scope, not the platform's own account-level "namespace" — so this
+  and that field are the same unbuilt generalization, not two independent
   ones.)
 
 Tenant-scoping IS real here, not just named: the stub table is keyed by

@@ -837,10 +837,10 @@ via `offline=True` instead of a bare unwired flag.
 src/provenance/
   raw_store/       Content-addressed store of verbatim raw bytes (built)
   verify/          PAE/DSSE verification from raw store bytes (built)
-  models/          Pydantic models for each layer: verification, provenance, evidence, artifact, policy
+  models/          Pydantic models for each layer: verification, provenance, evidence, artifact
   normalize/       Dispatch + per-version SLSA adapters (v0_2, v1_0) (built)
   associate.py     Digest -> artifact resolution (thin stub, design in the docstring)
-  policy/          EVALUATE: plain predicate function + input-document contract (built, no engine)
+  policy/          EVALUATE: plain predicate function + input-document contract + Decision model (built, no engine)
   api/             FastAPI app (EXPOSE) + demo bootstrap (seeds from fixtures)
 tests/
   fixtures/bundles/  Two real, captured Sigstore bundles + meta.json provenance sidecars
