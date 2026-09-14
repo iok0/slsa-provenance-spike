@@ -221,9 +221,9 @@ Artifact
 
 ## What I built vs. designed
 
-Six stages + two possible deep dives + several milestones is not a short build that ends up
-genuinely good - a half-working sprawl would undersell the point more than a narrow, excellent
-slice. So: **one built spine, everything else designed with the seams named.**
+Six stages, two possible deep dives, several milestones - building all of it shallowly would
+read as unfinished everywhere rather than excellent anywhere. So: **one built spine, everything
+else designed with the seams named.**
 
 | Stage | Status |
 |---|---|
@@ -328,6 +328,14 @@ hand-defined input document (`EvidenceItem` = normalized facts + verification re
 pointer, per attestation) - no policy engine wired at all. OPA (or Cedar, or CEL) is future
 work, struck from this spike deliberately: it can be dropped in later without touching the
 input-document contract, which is the actual artifact here.
+
+The decision function itself is deliberately small - a short chain of boolean checks
+(verification passed, issuer acceptable, builder identity confirmed, runner isolation
+confirmed) collapsing to ALLOW or DENY, never a graduated score. The evidence → facts →
+decisions layering above isn't there because that function is complex - it's there
+because a function this small is exactly where conflating a self-asserted field with a
+verified one goes unnoticed, not despite being simple (see the `builder_id` bullet
+below for the concrete case).
 
 - **Per-subject (admission-time) policy** is a pure function of an artifact's *evidence set*,
   not a single bundle in isolation - admission-relevant facts that don't exist when each
