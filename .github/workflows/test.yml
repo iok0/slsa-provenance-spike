@@ -27,4 +27,10 @@ jobs:
         # live TUF trust-root fetch (Verifier.production()) — a named,
         # present flakiness risk, not a hypothetical one. See the README's
         # "present, not hypothetical, risk" section.
-        run: uv run pytest -v
+        #
+        # Coverage is reported, not gated: this build deliberately leaves
+        # named-not-built branches unexercised (see README's "What I built
+        # vs designed"), so a pass/fail percentage threshold would either
+        # sit uselessly low or pressure filler tests for code that's a
+        # documented stub on purpose. The report is for visibility only.
+        run: uv run pytest -v --cov=provenance --cov-report=term-missing
