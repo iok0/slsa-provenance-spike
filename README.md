@@ -40,18 +40,14 @@ to demonstrate:
   the domain model to either version. SLSA v0.2 and v1.0 predicates - materially different
   shapes, not just field renames - project onto one stable canonical model via per-version
   adapters, with the adapter's own version tracked separately from the spec version it targets.
-- **Identity-bound policy evaluation.** A policy-relevant field asserted inside the signed
-  payload itself (`builder_id`) is only trusted once it's checked against the identity the
-  cryptography actually verified - a self-asserted claim doesn't get to allowlist itself.
-
-## Process note
-
-Built in collaboration with Claude Code - not a solo build with an assistant executing a
-spec handed down in full beforehand. Scoping and design calls throughout this repo (what to
-build deep vs. design-only, the `builder_id`/identity-binding fix below, among others) were
-worked out in back-and-forth with it, not just delegated for it to draft; it also wrote most
-of the code and prose here. Said plainly, rather than left for the prose style to reveal on
-its own.
+- **Identity-bound policy evaluation** - separating verification, normalization, and policy so a
+  self-asserted field can never allowlist itself. `builder_id` - the one field in the signed
+  payload that policy allowlists on - is only trusted once it's checked against the identity
+  the cryptography actually verified.
+- **Real-evidence testing and named scope boundaries.** Every claim above is checked against
+  two independently-signed real Sigstore bundles, not synthetic fixtures, and everything not
+  built (SBOM, corpus policy, a wired policy engine) is named as a scoping decision rather than
+  left implicit.
 
 ## The problem
 
@@ -629,6 +625,14 @@ estimated, and is a real forward-looking concern at "millions of records" scale,
 category error. Not fixed here - excluding a specific known-bulk subtree
 (`github_event_payload`) would just hardcode "whatever was big in these two fixtures" as a
 general rule. Recorded instead under Open questions.
+
+## How this was built
+
+Built in collaboration with Claude Code. I wrote a spec up front - the evidence → facts
+→ decisions layering, the requirement to keep raw evidence forever, late-binding for
+independently-arriving attestations on the same artifact - then we stress-tested that
+approach together before settling on the detailed design. Most of the implementation was
+generated from the spec and reviewed by me iteratively.
 
 ## Real-world evidence: things observed, not assumed
 
