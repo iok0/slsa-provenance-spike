@@ -13,12 +13,8 @@ evidence arrives; a query reads them, it doesn't recompute them). The API
 route does not call sigstore-python per request.
 
 Only reads a subject's `sha256` digest key when building the index — see
-associate.py's docstring on why: that's the strong-digest floor in
-practice for the two real fixtures (neither has ever forced this code to
-reject an actual weaker alternative, since neither fixture's subject
-entries carry more than one digest algorithm — this only ever *reads*
-sha256, it doesn't need to reject anything else because nothing else is
-there to reject).
+associate.py's docstring on why that's the strong-digest floor in
+practice for both real fixtures.
 """
 
 from __future__ import annotations

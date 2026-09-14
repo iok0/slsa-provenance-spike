@@ -39,9 +39,6 @@ class VerificationRecord(BaseModel):
     this record), not VERIFY's — which is also why verification is run with
     sigstore-python's `UnsafeNoOp` policy (crypto-only, no identity
     assertion) rather than asserting an expected identity here.
-    `policy_identity_matched` is therefore only ever populated by a caller
-    that *did* supply an expected identity (e.g. a future re-verification
-    pass); it is not set by the default ingest path.
     """
 
     raw_digest: str
@@ -53,7 +50,6 @@ class VerificationRecord(BaseModel):
 
     identity: str | None = None
     issuer: str | None = None
-    policy_identity_matched: bool | None = None
 
     verified_at: datetime
     trust_root: str

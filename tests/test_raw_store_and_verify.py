@@ -85,7 +85,6 @@ def test_verify_from_raw_succeeds_on_real_bundle(store):
         "@refs/heads/main"
     )
     assert record.issuer == "https://token.actions.githubusercontent.com"
-    assert record.policy_identity_matched is None  # not asserted at this layer
 
 
 def test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version(store):

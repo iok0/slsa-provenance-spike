@@ -94,29 +94,14 @@ def verify_from_raw(
         payload_type, _payload = verifier.verify_dsse(bundle, policy.UnsafeNoOp())
     except SigstoreVerificationError as e:
         record.error = str(e)
-        # sigstore-python's verify_dsse is one all-or-nothing call: on
-        # failure we know verification-as-a-whole didn't succeed, but not
-        # which sub-check first broke. Every failure path raises the same
-        # flat `VerificationError` with no error code (sigstore's
-        # errors.py), so message text is the only signal available — and
-        # it isn't a documented API contract, just log wording that a
-        # sigstore-python upgrade can reword without notice.
-        #
-        # So this matches on specific substrings observed at the actual
-        # `raise` sites (checked against sigstore==4.5.0's
-        # verify/verifier.py, dsse/__init__.py, and
-        # _internal/rekor/checkpoint.py) rather than loose tokens like
-        # "cert" or "signature", which show up in more than one category's
-        # messages (e.g. the SCT failure message itself says "...on
-        # signing certificate") and would misfire across the elif chain.
-        # A message that doesn't unambiguously match a category — e.g.
-        # "not enough sources of verified time" (no check reached yet) or
-        # a cert-profile failure like "Key usage is not of type ..."
-        # (there's no VerificationRecord field for that) — leaves all four
-        # fields `None` ("not reached") rather than guessing. A wrong,
-        # specific `False` overclaims more than an honest "don't know" —
-        # see VerificationRecord's docstring on the None-vs-False
-        # distinction.
+        # verify_dsse is one all-or-nothing call with no error code, so
+        # message text is the only signal for which check failed — and
+        # it's not a documented contract, just log wording (matched
+        # against sigstore==4.5.0's actual raise sites, not loose tokens
+        # like "cert"/"signature" that appear in more than one category's
+        # message). An unmatched message leaves all four fields None
+        # rather than guessing — see VerificationRecord's None-vs-False
+        # docstring.
         msg = str(e).lower()
         if "failed to verify sct" in msg:
             record.sct_verified = False

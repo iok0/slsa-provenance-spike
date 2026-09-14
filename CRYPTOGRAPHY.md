@@ -128,7 +128,9 @@ Against the trust root **as it was at signing time** - not today's (see rotation
 
 Output is a **structured record**, not a boolean - see SPIKE.md's VERIFY section for the
 fields (`signature_verified`, `chain_verified`, `sct_verified`, `tlog_verified`, `identity`,
-`issuer`, `policy_identity_matched`, `verified_at`, `trust_root`).
+`issuer`, `verified_at`, `trust_root`). Step 5's policy check (identity/issuer against an
+expected value) is EVALUATE's job in this build, not VERIFY's - see
+`models/verification.py`'s docstring.
 
 sigstore-python's `verify_dsse` runs steps 1-4 above as one all-or-nothing call and raises a
 single flat `VerificationError` with no error code on any failure, so the four check fields

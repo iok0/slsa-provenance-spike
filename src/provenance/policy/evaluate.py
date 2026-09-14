@@ -10,38 +10,34 @@ A pure function of the artifact's *evidence set*, not a single
 attestation in isolation — some admission-relevant facts only exist
 across the set (SPIKE's examples: provenance present but SBOM missing;
 two provenance attestations disagreeing on builder identity). Both real
-fixtures happen to be singleton evidence sets, so the one genuine
-set-level check here (conflicting builder identity) is only exercised by
-a constructed test, not by either real fixture — named honestly in that
-test, same discipline as everywhere else in this build.
+fixtures are singleton evidence sets, so the one genuine set-level check
+here (conflicting builder identity) is only exercised by a constructed
+test, not either real fixture.
 
 ## The SLSA-level check, and what the real fixtures forced
 
 "SLSA level met" is not a field in any predicate — it's asserted
 out-of-band by whoever operates the build platform (README). So level is
 determined by mapping the verified `builder_id` against a maintained
-allowlist below. That mapping alone turned out to be insufficient once
-checked against real evidence, not hypothetically:
+allowlist below. That mapping alone is insufficient against both real
+fixtures:
 
 - The real ruff (v1.0, GitHub-native) fixture has
-  `runDetails`... no — `buildDefinition.internalParameters.github.
-  runner_environment == "self-hosted"`. GitHub's own documented Build L3
-  claim is specifically about GitHub-*hosted*-runner non-falsifiability;
-  it does not cover self-hosted (operator-controlled) runners. So this
-  builder's allowlisted level-3 ceiling does not apply to *this specific*
-  attestation, even though the builder itself is allowlisted.
+  `buildDefinition.internalParameters.github.runner_environment ==
+  "self-hosted"`. GitHub's documented Build L3 claim covers only
+  GitHub-*hosted* runners, not self-hosted (operator-controlled) ones —
+  so this builder's allowlisted level-3 ceiling doesn't apply to *this
+  specific* attestation, even though the builder itself is allowlisted.
 - The real scorecard (v0.2, slsa-github-generator) fixture's predicate
-  shape has no equivalent field at all — checked directly, not assumed.
-  v0.2 evidence structurally cannot be confirmed on this axis.
+  shape has no equivalent field at all. v0.2 evidence structurally
+  cannot be confirmed on this axis.
 
 Both cases are treated as "the required level cannot be positively
-confirmed for this attestation" — fail-closed on missing confirmation,
-not fail-open, on the view that an unconfirmed non-falsifiability claim
-provides no more assurance than no claim at all. This is a real,
-demonstrated policy stance, not a hypothetical one: run against the two
-real fixtures in this repo, it denies both — for two different, worth-
-distinguishing reasons. See the README for why that's a finding worth
-keeping, not a bug to route around.
+confirmed" — fail-closed on missing confirmation, not fail-open: an
+unconfirmed non-falsifiability claim provides no more assurance than no
+claim at all. Run against both real fixtures, this denies both, for two
+different reasons — see the README for why that's a finding to keep,
+not a bug to fix.
 
 ## builder_id is only trustworthy if it matches who actually signed
 
@@ -120,18 +116,8 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
             "the acceptable-issuer list"
         )
 
-    # builder_id is NORMALISE output: a string read verbatim out of the
-    # signed *payload*. The signature proves who held the signing key: it
-    # proves nothing about whether that identity was entitled to write
-    # this particular builder_id into its own predicate. Trusting
-    # builder_id against the allowlist without first checking it equals
-    # the cert identity VERIFY actually attests to would let any signer
-    # with an acceptable issuer self-assert its way onto the allowlist —
-    # exactly the "downstream layer implying more certainty than the
-    # layer beneath earned" failure this whole model exists to prevent.
-    # For a non-falsifiable generator (both real fixtures) the two are
-    # always equal by construction; a builder that lets the calling job
-    # set its own builder_id is exactly the case this check is for.
+    # builder_id is self-asserted NORMALISE output, not itself verified —
+    # see module docstring's "builder_id is only trustworthy..." section.
     builder_id = item.provenance.builder_id
     if builder_id != item.verification.identity:
         reasons.append(
