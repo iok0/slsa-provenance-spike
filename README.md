@@ -44,6 +44,15 @@ to demonstrate:
   payload itself (`builder_id`) is only trusted once it's checked against the identity the
   cryptography actually verified - a self-asserted claim doesn't get to allowlist itself.
 
+## Process note
+
+Built in collaboration with Claude Code - not a solo build with an assistant executing a
+spec handed down in full beforehand. Scoping and design calls throughout this repo (what to
+build deep vs. design-only, the `builder_id`/identity-binding fix below, among others) were
+worked out in back-and-forth with it, not just delegated for it to draft; it also wrote most
+of the code and prose here. Said plainly, rather than left for the prose style to reveal on
+its own.
+
 ## The problem
 
 An artifact registry that sits in the middle of how organizations store and distribute
