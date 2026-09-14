@@ -38,7 +38,7 @@ def test_get_provenance_for_known_ruff_artifact():
     assert body["artifact"] == {
         "tenant_id": "acme",
         "repo": "acme-tools",
-        "namespace": None,
+        "format_namespace": None,
         "package": "ruff",
         "version": "0.16.7",
         "file": "ruff-x86_64-unknown-linux-gnu.tar.gz",

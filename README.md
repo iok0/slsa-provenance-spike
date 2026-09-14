@@ -507,7 +507,7 @@ tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [1
   "artifact": {
     "tenant_id": "acme",
     "repo": "acme-tools",
-    "namespace": null,
+    "format_namespace": null,
     "package": "ruff",
     "version": "0.16.7",
     "file": "ruff-x86_64-unknown-linux-gnu.tar.gz"

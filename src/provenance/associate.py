@@ -21,10 +21,11 @@ README names in full but this function does not implement:
 - **OCI/container manifest depth.** For container subjects, association
   may need to match an index digest or any per-platform manifest digest,
   not one fixed level. Out of scope here — file digests only, matching
-  what both real fixtures actually are. (OCI is also exactly the kind
-  of format `ArtifactRef.namespace` exists for — a registry namespace —
-  so this and the namespace field are the same unbuilt generalization,
-  not two independent ones.)
+  what both real fixtures actually are. (OCI is also exactly the kind of
+  format `ArtifactRef.format_namespace` exists for — a per-format
+  sub-scope, not the platform's own account-level "namespace" — so this and
+  that field are the same unbuilt generalization, not two independent
+  ones.)
 
 Tenant-scoping IS real here, not just named: the stub table is keyed by
 (tenant_id, digest), so a lookup can never cross tenants even if two
@@ -49,7 +50,7 @@ _STUB_ARTIFACTS: dict[tuple[str, str], ArtifactRef] = {
     ): ArtifactRef(
         tenant_id="acme",
         repo="acme-tools",
-        namespace=None,  # generic tarball release, no namespaced format involved
+        format_namespace=None,  # generic tarball release, no format sub-scope involved
         package="ruff",
         version="0.16.7",
         file="ruff-x86_64-unknown-linux-gnu.tar.gz",
@@ -60,7 +61,7 @@ _STUB_ARTIFACTS: dict[tuple[str, str], ArtifactRef] = {
     ): ArtifactRef(
         tenant_id="acme",
         repo="acme-security",
-        namespace=None,  # generic tarball release, no namespaced format involved
+        format_namespace=None,  # generic tarball release, no format sub-scope involved
         package="scorecard",
         version="5.5.0",
         file="scorecard_5.5.0_darwin_amd64.tar.gz",
