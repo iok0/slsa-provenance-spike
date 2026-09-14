@@ -8,11 +8,14 @@ touching either.
 
 A pure function of the artifact's *evidence set*, not a single
 attestation in isolation — some admission-relevant facts only exist
-across the set (SPIKE's examples: provenance present but SBOM missing;
-two provenance attestations disagreeing on builder identity). Both real
-fixtures are singleton evidence sets, so the one genuine set-level check
-here (conflicting builder identity) is only exercised by a constructed
-test, not either real fixture.
+across the set. "Provenance present but SBOM missing" is the
+motivating example for why this has to be set-level at all, but it's
+illustrative only: no SBOM evidence type exists in this build (see the
+README), so there's no code path that could check it. The one such
+check actually implemented is two provenance attestations disagreeing
+on builder identity, and even that is only exercised by a constructed
+test — both real fixtures are singleton evidence sets, so no real
+fixture reaches it either.
 
 ## The SLSA-level check, and what the real fixtures forced
 

@@ -26,8 +26,7 @@ both fields come from the same tool's internal state and so already agree
 on protocol/casing/suffix. It will not survive a `.git` suffix, a
 protocol mismatch (`https://` vs `git+https://` appearing on only one
 side), or org/repo case differences — known, named, not handled, because
-no fixture exercises any of those variants. See
-implementation_learnings.md's "External review" section.
+no fixture exercises any of those variants.
 """
 
 from __future__ import annotations

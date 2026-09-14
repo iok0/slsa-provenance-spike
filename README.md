@@ -325,11 +325,15 @@ work, struck from this spike deliberately: it can be dropped in later without to
 input-document contract, which is the actual artifact here.
 
 - **Per-subject (admission-time) policy** is a pure function of an artifact's *evidence set*,
-  not a single bundle in isolation - "provenance present but SBOM missing," or "two provenance
-  attestations disagree on builder identity," are admission-relevant facts that don't exist
-  when each attestation is evaluated alone. Synchronous, runs on ingest. The decision is
-  stamped with the `policy_version` it was evaluated against, same discipline as `trust_root`
-  on the verification record it consumed.
+  not a single bundle in isolation - admission-relevant facts that don't exist when each
+  attestation is evaluated alone. "Provenance present but SBOM missing" is the motivating
+  example for why, but it's illustrative only: no SBOM evidence type exists in this build (see
+  "what I deliberately didn't build" below), so nothing here actually checks it. The one
+  set-level check that's real is two provenance attestations disagreeing on builder identity -
+  and even that is only reachable by a constructed test, since both real fixtures are singleton
+  evidence sets. Synchronous, runs on ingest. The decision is stamped with the `policy_version`
+  it was evaluated against, same discipline as `trust_root` on the verification record it
+  consumed.
 - **"SLSA level met" is not a field in the attestation.** Neither SLSA v0.2 nor v1.0 provenance
   carries an explicit level - level is a property of the *build platform* (isolation,
   non-falsifiable provenance generation), asserted out-of-band by whoever operates it (GitHub

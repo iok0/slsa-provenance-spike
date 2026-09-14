@@ -103,6 +103,6 @@ class CanonicalProvenance(BaseModel):
     completeness guarantee (that's the raw record itself, stored
     verbatim). Can be non-trivially sized: e.g. v0.2's
     `invocation.environment.github_event_payload` alone measured ~8.5KB
-    on the real scorecard fixture. See implementation_learnings.md's
-    "External review" section for the open question this raises about
-    whether raw_unmapped should ever exclude known-bulk subtrees."""
+    on the real scorecard fixture. See the README's "raw_unmapped bulk
+    exclusion" open question for why that isn't fixed by excluding it
+    here."""

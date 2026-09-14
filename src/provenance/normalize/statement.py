@@ -8,8 +8,8 @@ pipeline, just two things that both read the raw bytes).
 Only handles the Sigstore Bundle shape (`dsseEnvelope` + `verificationMaterial`
 at the top level) — the shape both real fixtures actually are. The older
 bare-DSSE shape (payload/payloadType/signatures at the top level, cert
-embedded in signatures[].cert — see implementation_learnings.md's Rekor
-`intoto`-kind finding) is a known, real, *un*implemented case: no fixture
+embedded in signatures[].cert — see the README's note on the legacy Rekor
+`intoto` entry kind) is a known, real, *un*implemented case: no fixture
 in this repo exercises it, so no parsing code claims to handle it.
 """
 
@@ -38,9 +38,9 @@ def statement_from_raw(raw_bytes: bytes) -> dict[str, Any]:
     if "dsseEnvelope" not in envelope:
         raise UnsupportedEnvelopeShape(
             "raw record has no dsseEnvelope — bare-DSSE envelopes (no "
-            "enclosing Bundle) are a known real shape (see "
-            "implementation_learnings.md) but are not handled here; no "
-            "fixture in this repo exercises that path"
+            "enclosing Bundle) are a known real shape (see the README) "
+            "but are not handled here; no fixture in this repo exercises "
+            "that path"
         )
 
     dsse = envelope["dsseEnvelope"]

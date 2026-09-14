@@ -1,11 +1,11 @@
 # Cryptography background
 
 Reference notes for the crypto primitives this service *depends on but does not design*.
-SPIKE.md's thesis is explicit that "the bit the Staff role is being hired to design is the
-canonical, queryable, policy-aware representation - not the signing or the crypto
-primitives" (SPIKE.md:14). This doc exists so that scoping decision doesn't mean the team
-is hazy on what sits underneath. It covers Sigstore **keyless** signing and verification, as
-used by `actions/attest-build-provenance`, `cosign`, PyPI (PEP 740), npm.
+The README's thesis is explicit that the interesting design problem is the canonical,
+queryable, policy-aware representation - not the signing or the cryptographic primitives
+underneath it (see README.md's Thesis section). This doc exists so that scoping decision
+doesn't read as being hazy about what sits underneath. It covers Sigstore **keyless** signing
+and verification, as used by `actions/attest-build-provenance`, `cosign`, PyPI (PEP 740), npm.
 
 ## What you have to trust
 
@@ -93,7 +93,7 @@ you the signer's environment was doing what you think. The trust dependencies:
 
    **Consequence for storage:** re-serialising the parsed JSON changes byte length /
    whitespace / key order → different PAE → signature no longer verifies. Whatever stores
-   this must keep the `payload` bytes **verbatim** (SPIKE.md's raw-store guarantee).
+   this must keep the `payload` bytes **verbatim** - the raw store's guarantee (README.md).
 
 7. **Rekor entry.** The signing event (a hash of the envelope + the cert) is submitted to
    the Rekor transparency log. Rekor returns an inclusion proof (Merkle proof the entry is
@@ -126,7 +126,7 @@ Against the trust root **as it was at signing time** - not today's (see rotation
 5. Read the SAN identity and issuer extension from the cert; check both against policy
    (identity == expected workflow ref, issuer == expected IdP).
 
-Output is a **structured record**, not a boolean - see SPIKE.md's VERIFY section for the
+Output is a **structured record**, not a boolean - see README.md's VERIFY section for the
 fields (`signature_verified`, `chain_verified`, `sct_verified`, `tlog_verified`, `identity`,
 `issuer`, `verified_at`, `trust_root`). Step 5's policy check (identity/issuer against an
 expected value) is EVALUATE's job in this build, not VERIFY's - see
@@ -153,7 +153,7 @@ use the root **in force at signing time**: an old signature chains to a Fulcio r
 have rotated out, and its Rekor SET was signed by a key since retired. TUF's per-key
 validity windows let a verifier pick the right historical key for an entry's timestamp.
 
-This is why SPIKE.md's raw store keeps verbatim bytes and records `verified_at` +
+This is why the raw store (README.md) keeps verbatim bytes and records `verified_at` +
 `trust_root` version per attestation: on a compromise disclosure for window `[T0, T1]`, you
 can identify every attestation verified in that window and re-run full verification against
 the corrected root. A stored pass/fail boolean gives you nothing to reassess.

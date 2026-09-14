@@ -25,6 +25,6 @@ jobs:
       - name: Test
         # Note: verification against the two real fixtures depends on a
         # live TUF trust-root fetch (Verifier.production()) — a named,
-        # present flakiness risk, not a hypothetical one. See
-        # implementation_learnings.md / the README.
+        # present flakiness risk, not a hypothetical one. See the README's
+        # "present, not hypothetical, risk" section.
         run: uv run pytest -v
