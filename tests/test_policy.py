@@ -23,6 +23,7 @@ from provenance.api.demo_bootstrap import seed_from_fixtures
 from provenance.models.evidence import EvidenceItem
 from provenance.models.provenance import CanonicalProvenance
 from provenance.models.verification import VerificationRecord
+from provenance.policy import evaluate as evaluate_module
 from provenance.policy.evaluate import evaluate
 from provenance.policy.models import PolicyOutcome
 
@@ -144,6 +145,46 @@ def test_constructed_builder_id_identity_mismatch_is_denied():
 
     assert decision.outcome is PolicyOutcome.DENY
     assert any("does not match the verified signing identity" in r for r in decision.reasons)
+
+
+def test_constructed_unknown_builder_is_denied():
+    """A builder that's simply not in the allowlist at all — distinct from
+    the identity-mismatch case above (this builder_id does match who
+    signed it; it's just nobody this policy has vetted). No real fixture
+    reaches this branch — both real builders are allow-listed."""
+    unknown_builder_id = "https://github.com/some-org/unvetted-builder/.github/workflows/build.yml@refs/heads/main"
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(identity=unknown_builder_id),
+        provenance=_minimal_provenance(builder_id=unknown_builder_id),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert any("not in builder allowlist" in r for r in decision.reasons)
+
+
+def test_constructed_builder_below_required_level_is_denied(monkeypatch):
+    """An allow-listed builder whose *documented* level is below what's
+    required — distinct from the "cannot confirm" branches the real
+    fixtures hit, where the level is sufficient but unconfirmed. No real
+    allow-listed builder is below the required level today, so this
+    temporarily adds one rather than waiting for evaluate.py's allowlist
+    to grow a low-level entry."""
+    low_level_builder_id = "https://github.com/some-org/level-1-builder/.github/workflows/build.yml@refs/heads/main"
+    monkeypatch.setitem(evaluate_module._BUILDER_ALLOWLIST, low_level_builder_id, 1)
+
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(identity=low_level_builder_id),
+        provenance=_minimal_provenance(builder_id=low_level_builder_id),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert any("claims level 1, required 3" in r for r in decision.reasons)
 
 
 def test_constructed_unverified_evidence_is_denied():
