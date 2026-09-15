@@ -27,10 +27,20 @@ fixtures:
 
 - The real ruff (v1.0, GitHub-native) fixture has
   `buildDefinition.internalParameters.github.runner_environment ==
-  "self-hosted"`. GitHub's documented Build L3 claim covers only
-  GitHub-*hosted* runners, not self-hosted (operator-controlled) ones —
-  so this builder's allowlisted level-3 ceiling doesn't apply to *this
+  "self-hosted"`. GitHub's Build L3 claim covers only GitHub-*hosted*
+  runners, not self-hosted (operator-controlled) ones — so this
+  builder's allowlisted level-3 ceiling doesn't apply to *this
   specific* attestation, even though the builder itself is allowlisted.
+  This isn't a single GitHub sentence to that effect; it's two real,
+  separately-documented facts combined: GitHub's own runner-security
+  docs state self-hosted runners lack the ephemeral/isolated-VM
+  guarantee GitHub-hosted runners have and "can be persistently
+  compromised by untrusted code in a workflow"
+  (https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners),
+  and SLSA Build L3 itself requires exactly that isolation property —
+  "strong controls to prevent runs from influencing one another, even
+  within the same project" (https://slsa.dev/spec/v1.0/levels,
+  Build L3).
 - The real scorecard (v0.2, slsa-github-generator) fixture's predicate
   shape has no equivalent field at all. v0.2 evidence structurally
   cannot be confirmed on this axis.

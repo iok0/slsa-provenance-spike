@@ -349,11 +349,16 @@ below for the concrete case).
   consumed.
 - **"SLSA level met" is not a field in the attestation.** Neither SLSA v0.2 nor v1.0 provenance
   carries an explicit level - level is a property of the *build platform* (isolation,
-  non-falsifiable provenance generation), asserted out-of-band by whoever operates it (GitHub
-  documents that GitHub-*hosted* Actions runners meet Build L3; that claim lives nowhere in the
-  attestation itself). So the canonical model correctly has no `slsa_level` field - level comes
-  from mapping the verified `builder_id` against a maintained allowlist (`_BUILDER_ALLOWLIST`
-  in `evaluate.py`), not from reading it off the predicate.
+  non-falsifiable provenance generation), asserted out-of-band by whoever operates it; that
+  claim lives nowhere in the attestation itself. So the canonical model correctly has no
+  `slsa_level` field - level comes from mapping the verified `builder_id` against a maintained
+  allowlist (`_BUILDER_ALLOWLIST` in `evaluate.py`), not from reading it off the predicate.
+  The GitHub-hosted-runner half of that out-of-band claim isn't one GitHub sentence - it's
+  GitHub's own runner-security docs (self-hosted runners "can be persistently compromised by
+  untrusted code in a workflow," unlike GitHub-hosted runners' ephemeral isolated VMs -
+  https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)
+  combined with SLSA's own Build L3 definition, which requires exactly that per-run isolation
+  (https://slsa.dev/spec/v1.0/levels).
 - **`builder_id` is only trustworthy if it matches who actually signed.** `builder_id` is
   NORMALISE output - a string read verbatim out of the *signed payload's content*. Verification
   proves who held the signing key; it proves nothing about whether that identity was entitled
@@ -591,10 +596,10 @@ That `DENY` is not a placeholder or a bug to route around before a demo. Run the
 reasons - checked directly, not assumed:
 
 - **ruff (v1.0)** positively confirms `runner_environment == "self-hosted"` in
-  `internalParameters.github`. GitHub's documented Build L3 claim is specifically about
-  GitHub-*hosted*-runner non-falsifiability; it doesn't cover self-hosted (operator-controlled)
-  runners. So this specific attestation's allowlisted level-3 ceiling doesn't hold - a real,
-  positively-confirmed "no."
+  `internalParameters.github`. Build L3's non-falsifiability guarantee applies to GitHub-*hosted*
+  runners only, not self-hosted (operator-controlled) ones (see the "SLSA level met" bullet
+  above for the sourcing) - so this attestation's allowlisted level-3 ceiling doesn't hold: a
+  real, positively-confirmed "no."
 - **scorecard (v0.2)** has no equivalent field at all in its predicate - checked by grepping
   its `raw_unmapped`, not assumed absent. v0.2's predicate shape structurally cannot confirm
   this either way.
