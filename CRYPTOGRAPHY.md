@@ -37,8 +37,8 @@ you the signer's environment was doing what you think. The trust dependencies:
    `runner_environment`, `event_name`. The client requests `aud=sigstore`.
 
 3. **Fulcio request.** Client sends Fulcio: the OIDC token + the ephemeral public key + a
-   proof-of-possession signature (a challenge - historically the token `sub` - signed with
-   the ephemeral private key).
+   proof-of-possession signature (the token's `sub` claim, signed with the ephemeral
+   private key).
 
 4. **Fulcio verifies the JWT cryptographically:**
    - `iss` is on Fulcio's configured issuer allowlist.
@@ -52,9 +52,13 @@ you the signer's environment was doing what you think. The trust dependencies:
 5. **Fulcio issues the certificate.** A short-lived X.509 leaf cert (**~10 minutes**):
    - subject public key = the ephemeral public key
    - **SAN** (URI) = the identity, derived per-issuer from the claims - for GitHub Actions
-     from `job_workflow_ref`
+     from `job_workflow_ref`. Gotcha for policy (the "Your policy" trust bullet above): if
+     the signing job calls a **reusable workflow** in another repo, `job_workflow_ref` names
+     *that* repo's workflow, not the caller's - an identity policy written against "this
+     repo's release workflow" can silently never match, or worse, needs to be written
+     against the reusable workflow's repo instead.
    - **OIDC issuer extension** - OID `1.3.6.1.4.1.57264.1.8`
-   - **CI claim extensions** - OIDs `1.3.6.1.4.1.57264.1.9`–`.22`: source repo URI, source
+   - **CI claim extensions** - OIDs `1.3.6.1.4.1.57264.1.9` to `.22`: source repo URI, source
      repo digest (commit SHA), source repo ref, repo owner, build config URI + digest,
      build trigger, run invocation URI, runner environment, repo visibility at signing, …
    - signed by Fulcio's intermediate CA key (chains to the Fulcio root)
@@ -87,7 +91,7 @@ you the signer's environment was doing what you think. The trust dependencies:
    {
      "payload": "<base64(statement bytes)>",
      "payloadType": "application/vnd.in-toto+json",
-     "signatures": [ { "sig": "<base64(signature over PAE)>", "keyid": "" } ]
+     "signatures": [ { "sig": "<base64(signature over PAE)>" } ]
    }
    ```
 
@@ -100,6 +104,16 @@ you the signer's environment was doing what you think. The trust dependencies:
    in the tree) and a **Signed Entry Timestamp** (SET) - Rekor's countersignature that it
    accepted the entry at time `T`. Rekor periodically publishes a signed checkpoint (signed
    tree head).
+
+   The SET is tied to older entry kinds/versions (`dsse`/`hashedrekord` `0.0.1`), not a
+   permanent feature of "how Rekor works." `sigstore-python==4.5.0` (this project's pinned
+   version) already treats it as conditional: `Verifier._establish_time` only trusts the
+   log's integrated time when `kind_version.version == "0.0.1"`, and it separately accepts
+   entries up to version `0.0.2` (`sigstore/verify/verifier.py`, `sigstore/models.py`). A
+   `0.0.2`-or-later entry - the shape Rekor v2 moves toward - carries no SET, so signing time
+   then depends solely on an RFC 3161 TSA timestamp; with neither source present,
+   verification fails closed ("not enough sources of verified time") rather than silently
+   skipping the time check.
 
 8. **Sigstore bundle.** Everything a verifier needs, packaged together
    (`application/vnd.dev.sigstore.bundle.v0.3+json`):
@@ -119,9 +133,11 @@ Against the trust root **as it was at signing time** - not today's (see rotation
 1. Reconstruct the PAE from the payload bytes; verify `signatures[].sig` under the cert's
    public key.
 2. Chain the cert: leaf → Fulcio intermediate → Fulcio root (pinned via TUF).
-3. Establish signing time from the Rekor SET (or an RFC 3161 timestamp) and check the
-   signature was made **inside the cert's validity window** - the cert is expired by the
-   time you verify, so this step is what makes the 10-minute cert meaningful.
+3. Establish signing time from the Rekor SET where the entry still carries one, or from an
+   RFC 3161 timestamp (see the SET caveat under the signing flow's Rekor step - newer log
+   entries have no SET and need the TSA timestamp instead), and check the signature was made
+   **inside the cert's validity window** - the cert is expired by the time you verify, so
+   this step is what makes the 10-minute cert meaningful.
 4. Verify the Rekor inclusion proof against the log; optionally the SCT against the CT log.
 5. Read the SAN identity and issuer extension from the cert; check both against policy
    (identity == expected workflow ref, issuer == expected IdP).
@@ -169,9 +185,16 @@ the corrected root. A stored pass/fail boolean gives you nothing to reassess.
   (split-view / equivocation), or backdates entries to predate a known Fulcio compromise.
   The log stops being a trustworthy witness. Mitigated by independent witnesses co-signing
   checkpoints and by clients retaining a checkpoint to demand a consistency proof against.
-- **Both together (or Fulcio key + no log monitoring)**: forge the cert *and* fabricate a
-  timestamped log entry, no independent contradiction. This is the scenario with no clean
-  detection - the reason Sigstore is moving toward multiple independent witnesses.
+- **Fulcio key compromised, log not monitored**: this needs no Rekor forgery at all. The
+  attacker submits their forged cert to the real, honest Rekor log and gets a completely
+  genuine inclusion proof and SET - "publicly detectable" (the "what you have to trust"
+  bullet above) only holds if something is actually watching the log. Nobody-monitoring is
+  an operational gap, not a second key compromise, and it's the cheaper of the two attacks
+  below to pull off.
+- **Both keys compromised**: forge the cert *and* fabricate a timestamped log entry, so
+  there's no honest log entry left to contradict the forged cert. This is the scenario with
+  no clean detection even *with* monitoring - the reason Sigstore is moving toward multiple
+  independent witnesses.
 
 ## OID quick reference (Fulcio X.509 extensions)
 
