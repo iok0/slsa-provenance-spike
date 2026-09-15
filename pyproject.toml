@@ -1,5 +1,5 @@
 [project]
-name = "provenance-ingestion-spike"
+name = "slsa-provenance-spike"
 version = "0.1.0"
 description = "Provenance ingestion spike: raw-preserving store, Sigstore verification, versioned SLSA normalizers, canonical provenance model."
 requires-python = ">=3.12"
