@@ -5,7 +5,9 @@ This is a stand-in for real INGEST (see README's INGEST section:
 idempotency, poison payloads, dead-letter — none of that is here), not a
 demo of it. It exists so the API has something real to answer queries
 against, using the exact same verify_from_raw / normalize_from_raw the
-rest of the built spine uses — no shortcut path.
+rest of the built spine uses — no shortcut path. All three of
+verify_from_raw / normalize_from_raw / statement_from_raw read the bytes
+back from the store by digest, not the bytes the caller read off disk.
 
 VERIFY and NORMALISE run once here, at seed time, and the results are
 cached — matching the architecture (facts are established once, when
@@ -49,14 +51,17 @@ def seed_from_fixtures(bundle_paths: Sequence[Path]) -> DemoData:
     for path in bundle_paths:
         raw_bytes = path.read_bytes()
         raw_digest = store.put(raw_bytes)
+        # Read back from the store — the "verify from raw" guarantee
+        # (see raw_store.store) — never the caller-held copy.
+        stored = store.get(raw_digest)
 
         records[raw_digest] = EvidenceItem(
             raw_digest=raw_digest,
-            verification=verify_from_raw(raw_bytes, raw_digest=raw_digest),
-            provenance=normalize_from_raw(raw_bytes),
+            verification=verify_from_raw(stored, raw_digest=raw_digest),
+            provenance=normalize_from_raw(stored),
         )
 
-        statement = statement_from_raw(raw_bytes)
+        statement = statement_from_raw(stored)
         for subject in statement.get("subject", []):
             sha256 = subject.get("digest", {}).get("sha256")
             if sha256:
