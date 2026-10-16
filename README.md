@@ -428,6 +428,45 @@ an allowlist hit at all, denying otherwise
 (`tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied` - constructed,
 since neither real fixture reaches this branch either).
 
+## Found after publishing: the Fulcio cert already vouches for runner and source
+
+Policy reads `runner_environment` out of the *predicate* - content the signer wrote about
+itself. Dumping both fixture certs' extensions afterwards showed Fulcio already copies the
+same claims, and more, out of GitHub's signed OIDC token into the leaf cert (OIDs in
+[CRYPTOGRAPHY.md](CRYPTOGRAPHY.md)) - vouched for by a third party, not self-asserted:
+
+| Fulcio extension | ruff (v1.0) | scorecard (v0.2) |
+|---|---|---|
+| `.11` runner environment | `self-hosted` | `github-hosted` |
+| `.9` build signer URI (= SAN) | `astral-sh/ruff/.../release.yml@refs/heads/main` | `slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0` |
+| `.12` source repo URI | `https://github.com/astral-sh/ruff` | `https://github.com/ossf/scorecard` |
+| `.13` source repo digest | `b5dba861...` | `c395761d...` |
+| `.18` build config URI | `astral-sh/ruff/.../release.yml@refs/heads/main` | `ossf/scorecard/.../goreleaser.yaml@refs/tags/v5.5.0` |
+
+What it changes, and what it doesn't:
+
+- **ruff's DENY gets stronger.** The cert says `self-hosted` too - the denial now rests on a
+  claim Fulcio vouches for, not only on ruff's own predicate.
+- **scorecard's "cannot confirm" does *not* simply flip to ALLOW.** `.11` describes the runner
+  of the job that requested the cert. For `attest-build-provenance` (ruff) that's the build
+  job. For slsa-github-generator's reusable workflow it's the *generator's* job - the generic
+  generator's caller builds the artifact in its own job and passes hashes in. So scorecard's
+  cert proves the provenance was generated on a GitHub-hosted runner, not that the build was.
+- **The source-binding gap closes.** Policy allowlists the builder (the SAN), so as written any
+  repo using generator v2.1.0 gets past the builder check. `.12` / `.18` name the source repo
+  and the *calling* workflow, vouched for by Fulcio - so builder trust (SAN) and source trust
+  (`.12`/`.18` against the package's expected source) can be checked separately. This is the
+  way out of CRYPTOGRAPHY.md's reusable-workflow SAN gotcha.
+- **The predicate agrees with the cert on both fixtures.** `source_revision` matches `.13`
+  exactly; `source_repo` matches `.12` exactly for ruff, and only after stripping `git+` and
+  `@ref` for scorecard - the same URI-matching weakness `v1_0.py`'s docstring already names.
+
+Not built, deliberately: changing `evaluate.py` would rewrite every quoted DENY reason and API
+response in this README. The next step is named instead: extract `.9`/`.11`/`.12`/`.13`/`.18`
+into `VerificationRecord` in `verifier.py` and have policy **prefer claims the cert vouches for
+over claims in the payload** wherever both exist, with the predicate value used only as a
+cross-check (a mismatch is a DENY).
+
 ## Demo
 
 Two things to look at directly rather than take on faith. Both are real pytest output and a
@@ -487,33 +526,36 @@ raw-store model says it should), and asserts verification now fails:
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 ```
 
-Full suite, for completeness - 21 tests, all against the two real fixtures above or explicitly
+Full suite, for completeness - 24 tests, all against the two real fixtures above or explicitly
 labeled constructed evidence:
 
 ```
 tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  4%]
-tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  9%]
-tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [ 14%]
-tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [ 19%]
-tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 23%]
-tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 28%]
+tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  8%]
+tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [ 12%]
+tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [ 16%]
+tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [ 20%]
+tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 25%]
+tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 29%]
 tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 33%]
-tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 38%]
-tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 42%]
-tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 47%]
-tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 52%]
-tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 57%]
-tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 61%]
-tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 66%]
-tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 71%]
-tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 76%]
-tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 80%]
-tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 85%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 90%]
+tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 37%]
+tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 41%]
+tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 45%]
+tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 50%]
+tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 54%]
+tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 58%]
+tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 62%]
+tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 66%]
+tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 70%]
+tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 75%]
+tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 79%]
+tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 83%]
+tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 87%]
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 91%]
 tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 95%]
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 
-============================== 21 passed in ~8s ===============================
+============================== 24 passed in ~8s ==============================
 ```
 
 ### What the API actually returns
@@ -602,7 +644,8 @@ reasons - checked directly, not assumed:
   real, positively-confirmed "no."
 - **scorecard (v0.2)** has no equivalent field at all in its predicate - checked by grepping
   its `raw_unmapped`, not assumed absent. v0.2's predicate shape structurally cannot confirm
-  this either way.
+  this either way - though the Fulcio cert does carry a runner signal; see "Found after
+  publishing" above for why that doesn't settle it.
 
 Both are treated as "cannot positively confirm the required runner isolation" and denied -
 fail-closed on missing confirmation, not fail-open, since an unconfirmed non-falsifiability
@@ -871,7 +914,7 @@ CRYPTOGRAPHY.md   Sigstore keyless-signing background this service depends on bu
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 21 tests; verification tests hit the network - see risk note above
+uv run pytest -v          # 24 tests; verification tests hit the network - see risk note above
 uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```
