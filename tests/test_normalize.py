@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from provenance.normalize import UnsupportedPredicateType, normalize_from_raw
+from provenance.normalize._util import without_paths
+from provenance.normalize.v0_2 import adapt as adapt_v0_2
 from provenance.normalize.v1_0 import UnsupportedBuildType, adapt as adapt_v1_0
 
 FIXTURES = Path(__file__).parent / "fixtures" / "bundles"
@@ -163,3 +165,109 @@ def test_unsupported_v1_0_build_type_raises():
     }
     with pytest.raises(UnsupportedBuildType):
         adapt_v1_0(statement)
+
+
+# Constructed predicates below, not real fixtures: both real fixtures carry
+# every optional field, so these are the only tests that reach the
+# "field absent" side of each adapter's `.get(..., default)`. Absent
+# optional fields map to None / empty, never a crash — a missing builder.id
+# is then denied by EVALUATE (builder_id != signing identity), not lost to
+# an ingest-time AttributeError.
+
+_GHA_WORKFLOW_BUILD_TYPE = "https://actions.github.io/buildtypes/workflow/v1"
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        {},
+        {"invocation": {}},
+        {"invocation": {"configSource": {"uri": "git+https://github.com/o/r"}}},
+    ],
+)
+def test_adapt_v0_2_tolerates_absent_optional_fields(predicate):
+    record = adapt_v0_2(
+        {"predicateType": "https://slsa.dev/provenance/v0.2", "predicate": predicate}
+    )
+
+    assert record.predicate_version == "v0.2"
+    assert record.builder_id is None
+    assert record.source_revision is None
+    assert record.invocation_id is None
+    assert record.dependencies == []
+
+
+def test_adapt_v0_2_material_without_digest_gets_empty_digest():
+    record = adapt_v0_2(
+        {
+            "predicateType": "https://slsa.dev/provenance/v0.2",
+            "predicate": {"materials": [{"uri": "git+https://github.com/o/r"}]},
+        }
+    )
+    assert [(d.uri, d.digest) for d in record.dependencies] == [
+        ("git+https://github.com/o/r", {})
+    ]
+
+
+def _v1_0_statement(**predicate_extra):
+    build_definition = {
+        "buildType": _GHA_WORKFLOW_BUILD_TYPE,
+        "externalParameters": {"workflow": {"repository": "https://github.com/o/r"}},
+    }
+    build_definition.update(predicate_extra.pop("build_definition_extra", {}))
+    return {
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {"buildDefinition": build_definition, **predicate_extra},
+    }
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        _v1_0_statement(),
+        _v1_0_statement(runDetails={}),
+    ],
+)
+def test_adapt_v1_0_tolerates_absent_optional_fields(statement):
+    record = adapt_v1_0(statement)
+
+    assert record.predicate_version == "v1"
+    assert record.builder_id is None
+    assert record.source_revision is None
+    assert record.invocation_id is None
+    assert record.dependencies == []
+
+
+def test_adapt_v1_0_source_dependency_without_digest():
+    """The workflow repo's dependency is found but carries no digest: no
+    source revision to report, and the dependency keeps an empty digest."""
+    uri = "git+https://github.com/o/r@refs/heads/main"
+    record = adapt_v1_0(
+        _v1_0_statement(build_definition_extra={"resolvedDependencies": [{"uri": uri}]})
+    )
+
+    assert record.source_revision is None
+    assert [(d.uri, d.digest) for d in record.dependencies] == [(uri, {})]
+
+
+def test_without_paths_removes_only_claimed_leaves_and_copies():
+    obj = {"a": {"b": 1, "c": 2}, "d": 3}
+
+    result = without_paths(obj, [["a", "b"]])
+
+    assert result == {"a": {"c": 2}, "d": 3}
+    assert obj == {"a": {"b": 1, "c": 2}, "d": 3}  # input untouched
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ["missing", "b"],  # absent intermediate key
+        ["d", "b"],  # intermediate isn't a dict
+        ["a", "missing"],  # absent leaf
+    ],
+)
+def test_without_paths_ignores_paths_that_dont_exist(path):
+    obj = {"a": {"b": 1}, "d": 3}
+    assert without_paths(obj, [path]) == obj
+
