@@ -919,6 +919,19 @@ uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```
 
+Mutation testing (`mutmut`, configured in `pyproject.toml`) is run by hand, not in CI:
+
+```
+uv run pytest             # first: caches the TUF trust root that mutant runs reuse offline
+rm -rf mutants && uv run mutmut run
+uv run mutmut results     # list survivors; `uv run mutmut show <name>` for a diff
+```
+
+`tests/conftest.py` forces the trust-root fetch offline under mutmut, so a mutant run needs the
+cache a plain online `pytest` run leaves behind. Clear `mutants/` before each run: mutmut's
+incremental cache skips mutants of source functions that haven't changed, so a test-only change
+otherwise isn't scored against them.
+
 ## Stack
 
 - Python + FastAPI
