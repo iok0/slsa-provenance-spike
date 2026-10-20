@@ -17,6 +17,7 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+mutants/
 
 # Local runtime state (spike storage — see SPIKE.md's SQLite / local-blob-dir stack note)
 *.db

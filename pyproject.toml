@@ -25,6 +25,7 @@ dev = [
     "pytest>=9.1,<10",
     "httpx>=0.28,<0.29",
     "pytest-cov>=7.1.0",
+    "mutmut>=3.3,<4",
 ]
 
 [build-system]
@@ -36,3 +37,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mutmut]
+source_paths = ["src/provenance/"]
+pytest_add_cli_args = ["-q", "-p", "no:cacheprovider"]
