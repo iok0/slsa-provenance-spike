@@ -67,9 +67,16 @@ class VerificationRecord(BaseModel):
         granular record into a single boolean, and it's a derived
         convenience for callers, not what gets stored.
         """
-        return bool(
-            self.signature_verified
-            and self.chain_verified
-            and self.sct_verified
-            and self.tlog_verified
-        )
+        return _all_checks_passed(self)
+
+
+def _all_checks_passed(record: VerificationRecord) -> bool:
+    # Module-level rather than inline in the property so mutation testing
+    # reaches it: mutmut doesn't mutate decorated functions, and this is the
+    # one line EVALUATE's verification gate rests on.
+    return bool(
+        record.signature_verified
+        and record.chain_verified
+        and record.sct_verified
+        and record.tlog_verified
+    )

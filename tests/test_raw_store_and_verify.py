@@ -62,6 +62,37 @@ def test_put_is_content_addressed_and_idempotent(store):
     assert store.get(digest1) == raw
 
 
+def test_store_creates_missing_parent_directories(tmp_path):
+    store = RawEnvelopeStore(tmp_path / "not" / "yet" / "there")
+    digest = store.put(b"raw bytes")
+    assert store.get(digest) == b"raw bytes"
+
+
+def test_on_disk_layout_is_stable(store):
+    """The fan-out layout is a durable format, not an implementation
+    detail: a store written by one version must be readable by the next,
+    or every blob already ingested is orphaned."""
+    digest = store.put(b"raw bytes")
+    assert (store.root / digest[:2] / digest[2:4] / f"{digest}.bin").read_bytes() == b"raw bytes"
+
+
+def test_put_into_an_existing_fan_out_directory(store):
+    """Two digests sharing their first four hex characters share a fan-out
+    directory; the second put must not trip over it already existing."""
+    raw = b"raw bytes"
+    digest = digest_of(raw)
+    (store.root / digest[:2] / digest[2:4]).mkdir(parents=True)
+
+    assert store.put(raw) == digest
+    assert store.get(digest) == raw
+
+
+def test_get_unknown_digest_raises_key_error_naming_it(store):
+    missing = digest_of(b"never stored")
+    with pytest.raises(KeyError, match=missing):
+        store.get(missing)
+
+
 def test_verify_from_raw_succeeds_on_real_bundle(store):
     """Demo moment: a real GH Actions SLSA v1.0 bundle, verified from the
     stored raw bytes, not from the original file."""

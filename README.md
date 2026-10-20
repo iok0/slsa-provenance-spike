@@ -530,40 +530,64 @@ raw-store model says it should), and asserts verification now fails:
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 ```
 
-Full suite, for completeness - 27 tests, all against the two real fixtures above or explicitly
-labeled constructed evidence, plus one unit test of the verifier's cert-identity extraction
-(`tests/test_verifier.py`) on a throwaway self-signed cert:
+Full suite, for completeness - 51 tests, all against the two real fixtures above or explicitly
+labeled constructed evidence (constructed predicates, records and store layouts), plus one unit
+test of the verifier's cert-identity extraction on a throwaway self-signed cert:
 
 ```
-tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  3%]
-tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  7%]
-tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [ 11%]
-tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [ 14%]
-tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [ 18%]
-tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 22%]
-tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 25%]
-tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 29%]
-tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 33%]
-tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 37%]
-tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 40%]
-tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 44%]
-tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 48%]
-tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 51%]
-tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 55%]
-tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 59%]
-tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 62%]
-tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 66%]
-tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 70%]
-tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 74%]
-tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 77%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 81%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 85%]
-tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [ 88%]
-tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs0-False-production] PASSED [ 92%]
-tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs1-True-production-offline] PASSED [ 96%]
+tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  1%]
+tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  3%]
+tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [  5%]
+tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [  7%]
+tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [  9%]
+tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 11%]
+tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 13%]
+tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 15%]
+tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 17%]
+tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 19%]
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate0] PASSED [ 21%]
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate1] PASSED [ 23%]
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate2] PASSED [ 25%]
+tests/test_normalize.py::test_adapt_v0_2_material_without_digest_gets_empty_digest PASSED [ 27%]
+tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement0] PASSED [ 29%]
+tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement1] PASSED [ 31%]
+tests/test_normalize.py::test_adapt_v1_0_source_dependency_without_digest PASSED [ 33%]
+tests/test_normalize.py::test_without_paths_removes_only_claimed_leaves_and_copies PASSED [ 35%]
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path0] PASSED [ 37%]
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path1] PASSED [ 39%]
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path2] PASSED [ 41%]
+tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 43%]
+tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 45%]
+tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 47%]
+tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 49%]
+tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 50%]
+tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 52%]
+tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 54%]
+tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 56%]
+tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 58%]
+tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 60%]
+tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 62%]
+tests/test_raw_store_and_verify.py::test_store_creates_missing_parent_directories PASSED [ 64%]
+tests/test_raw_store_and_verify.py::test_on_disk_layout_is_stable PASSED [ 66%]
+tests/test_raw_store_and_verify.py::test_put_into_an_existing_fan_out_directory PASSED [ 68%]
+tests/test_raw_store_and_verify.py::test_get_unknown_digest_raises_key_error_naming_it PASSED [ 70%]
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 72%]
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 74%]
+tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [ 76%]
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs0-False-production] PASSED [ 78%]
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs1-True-production-offline] PASSED [ 80%]
+tests/test_verification_record.py::test_fully_verified_when_every_check_passed PASSED [ 82%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-False] PASSED [ 84%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-None] PASSED [ 86%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-False] PASSED [ 88%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-None] PASSED [ 90%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-False] PASSED [ 92%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-None] PASSED [ 94%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-False] PASSED [ 96%]
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-None] PASSED [ 98%]
 tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_extensions PASSED [100%]
 
-============================== 27 passed in ~9s ==============================
+============================== 51 passed in ~9s ==============================
 ```
 
 ### What the API actually returns
@@ -922,7 +946,7 @@ CRYPTOGRAPHY.md   Sigstore keyless-signing background this service depends on bu
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 27 tests; verification tests hit the network - see risk note above
+uv run pytest -v          # 51 tests; verification tests hit the network - see risk note above
 uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```
@@ -939,6 +963,24 @@ uv run mutmut results     # list survivors; `uv run mutmut show <name>` for a di
 cache a plain online `pytest` run leaves behind. Clear `mutants/` before each run: mutmut's
 incremental cache skips mutants of source functions that haven't changed, so a test-only change
 otherwise isn't scored against them.
+
+Last full run: 513 killed, 52 survived. Every survivor has been triaged; none changes an
+allow/deny decision or a verification result. Re-triage only survivors outside these groups:
+
+- **Equivalent (17)** - no test can tell them apart from the original: `rsplit("/", 1)[-1]`
+  vs `[+1]` or no maxsplit (`predicate_version`), `split("@", 1)` vs no or a larger maxsplit
+  (`_strip_git_ref`), dropping an explicit `=None` that is already the model default, the
+  temp-file suffix in `RawEnvelopeStore.put`, `None` vs `""` as a not-a-dict sentinel in
+  `without_paths`, and in `verifier.py` `offline=None`, an always-true `if uris`, and dropping
+  `asn1Spec` (DER is self-tagged).
+- **Message and label text (29)** - denial reasons in `policy/evaluate.py`, exception messages
+  in `normalize/`, and the FastAPI app title. Human-facing wording; pinning it would make tests
+  brittle for little value.
+- **Demo bootstrap (5)** - `.get` defaults the real fixtures never reach, and `store=None`,
+  which survives because nothing reads `DemoData.store`.
+- **`_strip_git_ref`: `split` vs `rsplit` (1)** - they differ only for a URI containing two
+  `@`s. GitHub URIs never do, but a URI with userinfo (`user@host`) would be stripped wrongly
+  by the current `split`. Known, not fixed.
 
 ## Stack
 
