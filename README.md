@@ -417,11 +417,15 @@ certainty-inflation failure the rest of this design exists to avoid, and unlike 
 scoping decision in this repo, this one wasn't named anywhere before it was pointed out in
 review.
 
-It stayed invisible against both real fixtures because GitHub-native `attest-build-provenance`
-and `slsa-github-generator`'s reusable workflow both generate provenance in a context the
-calling job can't write to - `identity` (the cert SAN) and `builder_id` (the payload's own
-self-assertion) are equal by construction for both. The gap only shows up for a builder that
-lets the calling job set its own `builder_id`, which neither real fixture exercises.
+It stayed invisible against both real fixtures because in both, `identity` (the cert SAN) and
+`builder_id` (the payload's own self-assertion) are derived from the same workflow ref that
+GitHub puts in the OIDC token's `job_workflow_ref` claim - but for different reasons.
+`slsa-github-generator`'s reusable workflow generates and signs provenance in a separate job
+the caller can't write to, so the equality is enforced by isolation. GitHub-native
+`attest-build-provenance` runs inside the calling job itself, which holds `id-token: write` -
+the equality there holds only because the action writes `builder_id` honestly; any other step
+in that job could sign a predicate with an arbitrary `builder_id`. The gap only shows up when
+the payload's `builder_id` diverges from the signer, which neither real fixture exercises.
 
 Fix: `_evaluate_item` now requires `builder_id == item.verification.identity` before trusting
 an allowlist hit at all, denying otherwise
