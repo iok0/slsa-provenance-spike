@@ -93,32 +93,13 @@ def verify_from_raw(
     try:
         payload_type, _payload = verifier.verify_dsse(bundle, policy.UnsafeNoOp())
     except SigstoreVerificationError as e:
+        # verify_dsse is one all-or-nothing call that raises a single flat
+        # VerificationError, so which of the four checks failed isn't
+        # knowable here; all four stay None (see VerificationRecord's
+        # None-vs-False docstring). sigstore's message is kept verbatim in
+        # `error` for a human to read; it's deliberately not parsed — its
+        # wording isn't a stable API (see CRYPTOGRAPHY.md).
         record.error = str(e)
-        # verify_dsse is one all-or-nothing call with no error code, so
-        # message text is the only signal for which check failed — and
-        # it's not a documented contract, just log wording (matched
-        # against sigstore==4.5.0's actual raise sites, not loose tokens
-        # like "cert"/"signature" that appear in more than one category's
-        # message). An unmatched message leaves all four fields None
-        # rather than guessing — see VerificationRecord's None-vs-False
-        # docstring.
-        msg = str(e).lower()
-        if "failed to verify sct" in msg:
-            record.sct_verified = False
-        elif "log entry" in msg:
-            # Covers both the wrapped inclusion/checkpoint failures
-            # ("invalid log entry: ...") and the step-8 body-consistency
-            # checks, which mention "log entry" directly (e.g. "log entry
-            # payload hash does not match bundle").
-            record.tlog_verified = False
-        elif "certificate chain" in msg or "signing cert" in msg:
-            # "failed to build timestamp certificate chain: ..." (chain
-            # build) and "invalid signing cert: expired at time of
-            # signing, ..." (validity-period check) — both about the
-            # cert's trust path, not the DSSE signature itself.
-            record.chain_verified = False
-        elif "dsse" in msg or "signature is invalid" in msg or "bundle message" in msg:
-            record.signature_verified = False
         return record
 
     record.payload_type = payload_type
