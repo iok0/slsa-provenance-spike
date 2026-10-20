@@ -150,13 +150,24 @@ expected value) is EVALUATE's job in this build, not VERIFY's - see
 
 sigstore-python's `verify_dsse` runs steps 1-4 above as one all-or-nothing call and raises a
 single flat `VerificationError` with no error code on any failure, so the four check fields
-above can't be read straight off a return value on the failure path. `verifier.py` classifies
-which check broke from the exception's message text against an allowlist of substrings
-observed at `sigstore==4.5.0`'s actual `raise` sites (message text isn't a documented contract,
-so a sigstore-python upgrade can reword these without notice). A message that doesn't
-unambiguously match leaves all four fields `None` rather than guessing - per
-`VerificationRecord`'s None-vs-False distinction (models/verification.py), a wrong specific
-`False` overclaims more than an honest "don't know."
+above can't be read straight off a return value on the failure path. `verifier.py` therefore
+leaves all four `None` on failure and keeps the exception's message in `error`. It deliberately
+doesn't classify the failure from that message: the wording isn't a documented contract, so a
+sigstore-python upgrade could reword it without notice, and a misattributed `False` would
+overclaim more than an honest "don't know" (`VerificationRecord`'s None-vs-False distinction,
+models/verification.py). Nothing in this build needs the distinction - EVALUATE reads only
+`fully_verified`, which is false on any failure regardless.
+
+Per-check failure detail would need typed errors upstream: a `VerificationError` subclass or
+`kind` attribute per check. sigstore-python left the door open when it consolidated its error
+types ([#959](https://github.com/sigstore/sigstore-python/pull/959): a single
+`VerificationError` "which we can specialize in the future, as necessary"), and has since
+specialized once, for a consumer that needed to tell one failure apart
+([#1510](https://github.com/sigstore/sigstore-python/pull/1510)'s `CertValidationError`,
+raised only for the TSA chain). The use case that would justify asking for more is
+re-verification after trust-root rotation (next section): a bundle failing on chain or cert
+validity should be re-verified against the historical root, while one failing on the signature
+itself is tampered - and today those are distinguishable only by message text.
 
 ## Trust-root rotation and re-verification
 

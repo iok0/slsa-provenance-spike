@@ -267,11 +267,11 @@ kept apart in code, not just described as separate in prose.
 `verified_at`, `trust_root`. A field is `None` when that check was never reached or can't be
 confirmed to have run - distinct from `False`, which means the check specifically ran and
 failed; collapsing "unknown" into "failed" would let the record imply more certainty than
-verification actually earned. This is enforced by the exception-handling branch in
-`verifier.py`, not just declared in a docstring - `sigstore-python` raises one flat,
-undocumented exception on any verification failure, so the branch has to classify which check
-broke from the exception's own message text (mechanics, and the library-upgrade fragility that
-implies, are in [CRYPTOGRAPHY.md](CRYPTOGRAPHY.md)).
+verification actually earned. In practice a failure leaves all four `None`: `sigstore-python`
+raises one flat exception on any verification failure, so which check broke isn't knowable
+without parsing its message text, which isn't a stable API. The message is kept verbatim in
+`error` instead (why this isn't parsed, and what per-check detail would need from upstream, is
+in [CRYPTOGRAPHY.md](CRYPTOGRAPHY.md)).
 
 **Normalize SLSA provenance v0.2 and v1.0** (`normalize/v0_2.py`, `normalize/v1_0.py`): one
 adapter per `(predicateType, version)` into a stable canonical Pydantic model
@@ -526,36 +526,40 @@ raw-store model says it should), and asserts verification now fails:
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 ```
 
-Full suite, for completeness - 24 tests, all against the two real fixtures above or explicitly
-labeled constructed evidence:
+Full suite, for completeness - 27 tests, all against the two real fixtures above or explicitly
+labeled constructed evidence, plus one unit test of the verifier's cert-identity extraction
+(`tests/test_verifier.py`) on a throwaway self-signed cert:
 
 ```
-tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  4%]
-tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  8%]
-tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [ 12%]
-tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [ 16%]
-tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [ 20%]
-tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 25%]
-tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 29%]
-tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 33%]
-tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 37%]
-tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 41%]
-tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 45%]
-tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 50%]
-tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 54%]
-tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 58%]
-tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 62%]
-tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 66%]
-tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 70%]
-tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 75%]
-tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 79%]
-tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 83%]
-tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 87%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 91%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 95%]
-tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
+tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  3%]
+tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  7%]
+tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [ 11%]
+tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [ 14%]
+tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [ 18%]
+tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 22%]
+tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 25%]
+tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 29%]
+tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 33%]
+tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 37%]
+tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 40%]
+tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 44%]
+tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 48%]
+tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 51%]
+tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 55%]
+tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 59%]
+tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 62%]
+tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 66%]
+tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 70%]
+tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 74%]
+tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 77%]
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 81%]
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 85%]
+tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [ 88%]
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs0-False-production] PASSED [ 92%]
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs1-True-production-offline] PASSED [ 96%]
+tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_extensions PASSED [100%]
 
-============================== 24 passed in ~8s ==============================
+============================== 27 passed in ~9s ==============================
 ```
 
 ### What the API actually returns
@@ -914,7 +918,7 @@ CRYPTOGRAPHY.md   Sigstore keyless-signing background this service depends on bu
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 24 tests; verification tests hit the network - see risk note above
+uv run pytest -v          # 27 tests; verification tests hit the network - see risk note above
 uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```

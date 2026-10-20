@@ -30,9 +30,11 @@ on the same two real bundles, not different ones for each claim:
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from sigstore.verify import Verifier
 
 from provenance.raw_store.store import RawEnvelopeStore, digest_of
 from provenance.verify.verifier import verify_from_raw
@@ -76,6 +78,8 @@ def test_verify_from_raw_succeeds_on_real_bundle(store):
     assert record.tlog_verified is True
     assert record.error is None
     assert record.payload_type == "application/vnd.in-toto+json"
+    assert record.trust_root == "production"
+    assert record.verified_at.utcoffset() == timedelta(0)
 
     # Identity is a recorded fact, not an enforced policy (see
     # VerificationRecord's docstring) — but it should be the real workflow
@@ -143,4 +147,42 @@ def test_byte_flip_breaks_verification(store):
     bad_record = verify_from_raw(store.get(tampered_digest), raw_digest=tampered_digest)
 
     assert not bad_record.fully_verified
-    assert bad_record.error is not None
+    # sigstore raises one flat error, so no check can be confirmed as the
+    # failed one: all four stay None rather than a guessed False (see
+    # VerificationRecord's None-vs-False docstring), and sigstore's own
+    # message is what records the reason.
+    assert bad_record.signature_verified is None
+    assert bad_record.chain_verified is None
+    assert bad_record.sct_verified is None
+    assert bad_record.tlog_verified is None
+    assert bad_record.error == "DSSE: invalid signature"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_offline", "expected_label"),
+    [
+        ({}, False, "production"),
+        ({"offline": True}, True, "production-offline"),
+    ],
+)
+def test_offline_flag_reaches_trust_root_and_is_recorded(
+    monkeypatch, kwargs, expected_offline, expected_label
+):
+    """The default must be the live trust root, and the record must say
+    which one was used — a decision made against a stale offline root
+    shouldn't be indistinguishable from one made against the live root.
+    """
+    original = Verifier.production
+    calls = []
+
+    def recording_production(offline=False):
+        calls.append(offline)
+        return original()
+
+    monkeypatch.setattr(Verifier, "production", recording_production)
+
+    raw = _load_bundle_bytes("ruff-0.16.7-linux-x86_64-slsa-v1")
+    record = verify_from_raw(raw, raw_digest=digest_of(raw), **kwargs)
+
+    assert calls == [expected_offline]
+    assert record.trust_root == expected_label
