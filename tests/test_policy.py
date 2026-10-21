@@ -40,7 +40,7 @@ def _real_evidence_set(fixture_dir: str) -> list[EvidenceItem]:
 def test_real_ruff_fixture_denied_for_self_hosted_runner():
     decision = evaluate(_real_evidence_set("ruff-0.16.7-linux-x86_64-slsa-v1"))
 
-    assert decision.policy_version == "1.1.0"
+    assert decision.policy_version == "1.2.0"
     # One reason only: the predicate agrees with its cert on runner,
     # source repo and revision, so no contradiction is raised — and the
     # denial rests on the cert's runner claim, not ruff's own predicate.
@@ -314,6 +314,28 @@ def test_constructed_predicate_runner_contradicting_cert_is_denied():
         for r in decision.reasons
     )
     assert any("not github-hosted (per the Fulcio cert)" in r for r in decision.reasons)
+
+
+def test_constructed_undecodable_cert_runner_claim_does_not_fall_back_to_predicate():
+    """The previous test's cert, but with `.11` unreadable: VERIFY leaves
+    the claim None and records why. Without that record, None reads as
+    "the cert doesn't say" and the predicate's github-hosted would ALLOW."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(
+            cert_claims=_calling_workflow_claims(runner_environment=None),
+            cert_decode_errors=["1.3.6.1.4.1.57264.1.11: not a DER UTF8String"],
+        ),
+        provenance=_minimal_provenance(raw_unmapped=_predicate_runner("github-hosted")),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert decision.reasons == [
+        "deadbeef: cert extension(s) present but undecodable, so cert facts can't "
+        "be relied on: ['1.3.6.1.4.1.57264.1.11: not a DER UTF8String']"
+    ]
 
 
 def test_constructed_cert_runner_claim_without_signer_claims_is_not_used():

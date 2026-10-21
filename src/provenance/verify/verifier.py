@@ -22,7 +22,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from cryptography.x509 import Certificate, ObjectIdentifier, UniformResourceIdentifier
+from cryptography.x509 import (
+    Certificate,
+    ExtensionNotFound,
+    ObjectIdentifier,
+    UniformResourceIdentifier,
+)
 from cryptography.x509.oid import ExtensionOID
 from pyasn1.codec.der.decoder import decode as der_decode
 from pyasn1.type.char import UTF8String
@@ -51,18 +56,36 @@ _CERT_CLAIM_OIDS = {
 }
 
 
-def _utf8_extension(cert: Certificate, oid: ObjectIdentifier) -> str | None:
+def _utf8_extension(
+    cert: Certificate, oid: ObjectIdentifier, decode_errors: list[str]
+) -> str | None:
+    """`None` only when the extension is absent. Anything else that stops
+    the value being read — the cert's extensions failing to parse, a
+    value that isn't a DER UTF8String, trailing bytes after one — is
+    appended to `decode_errors` instead: "the cert doesn't say" and "the
+    cert says something we couldn't read" must not look the same, or
+    EVALUATE falls back to the predicate on a cert it should distrust."""
     try:
         ext = cert.extensions.get_extension_for_oid(oid).value
-        return str(der_decode(ext.value, asn1Spec=UTF8String())[0])
-    except Exception:
+        value, rest = der_decode(ext.value, asn1Spec=UTF8String())
+        if rest:
+            raise ValueError(f"{len(rest)} trailing bytes after the UTF8String")
+        return str(value)
+    except ExtensionNotFound:
+        return None
+    except Exception as e:
+        decode_errors.append(f"{oid.dotted_string}: {e}")
         return None
 
 
-def _extract_identity(cert: Certificate) -> tuple[str | None, str | None]:
-    """Best-effort extraction of SAN identity + OIDC issuer from the leaf
-    cert. Independent of verification outcome — these are read off
-    whatever certificate Fulcio issued, not asserted by us.
+def _extract_identity(
+    cert: Certificate, decode_errors: list[str]
+) -> tuple[str | None, str | None]:
+    """SAN identity + OIDC issuer from the leaf cert. Independent of
+    verification outcome — these are read off whatever certificate Fulcio
+    issued, not asserted by us. Absent is `None`; undecodable is recorded
+    in `decode_errors`, as for `_utf8_extension`. A SAN with no URI entry
+    (e.g. an email identity) is absent, not an error.
     """
     identity: str | None = None
     try:
@@ -71,16 +94,21 @@ def _extract_identity(cert: Certificate) -> tuple[str | None, str | None]:
         ).value
         uris = san.get_values_for_type(UniformResourceIdentifier)
         identity = uris[0] if uris else None
-    except Exception:
+    except ExtensionNotFound:
         pass
-    return identity, _utf8_extension(cert, _OIDC_ISSUER_V2_OID)
+    except Exception as e:
+        decode_errors.append(f"{ExtensionOID.SUBJECT_ALTERNATIVE_NAME.dotted_string}: {e}")
+    return identity, _utf8_extension(cert, _OIDC_ISSUER_V2_OID, decode_errors)
 
 
-def _extract_cert_claims(cert: Certificate) -> CertClaims:
-    """Best-effort, like `_extract_identity`: an absent or undecodable
-    extension is `None`, never a crash."""
+def _extract_cert_claims(cert: Certificate, decode_errors: list[str]) -> CertClaims:
+    """Like `_extract_identity`: an absent extension is `None`, an
+    undecodable one is recorded in `decode_errors`, never a crash."""
     return CertClaims(
-        **{field: _utf8_extension(cert, oid) for field, oid in _CERT_CLAIM_OIDS.items()}
+        **{
+            field: _utf8_extension(cert, oid, decode_errors)
+            for field, oid in _CERT_CLAIM_OIDS.items()
+        }
     )
 
 
@@ -104,13 +132,16 @@ def verify_from_raw(
     trust_root_label = "production" + ("-offline" if offline else "")
 
     bundle = Bundle.from_json(raw_bytes)
-    identity, issuer = _extract_identity(bundle.signing_certificate)
+    decode_errors: list[str] = []
+    identity, issuer = _extract_identity(bundle.signing_certificate, decode_errors)
+    cert_claims = _extract_cert_claims(bundle.signing_certificate, decode_errors)
 
     record = VerificationRecord(
         raw_digest=raw_digest,
         identity=identity,
         issuer=issuer,
-        cert_claims=_extract_cert_claims(bundle.signing_certificate),
+        cert_claims=cert_claims,
+        cert_decode_errors=decode_errors,
         verified_at=datetime.now(timezone.utc),
         trust_root=trust_root_label,
     )

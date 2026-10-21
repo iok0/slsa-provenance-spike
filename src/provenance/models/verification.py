@@ -84,6 +84,12 @@ class VerificationRecord(BaseModel):
     identity: str | None = None
     issuer: str | None = None
     cert_claims: CertClaims = CertClaims()
+    cert_decode_errors: list[str] = []
+    """Cert extensions present but unreadable, as `"<oid>: <reason>"`.
+    Their facts above are `None`, which on its own would read as "the
+    cert doesn't say" — this is what tells EVALUATE the cert *did* say
+    something. A fact-extraction problem, not a crypto one: it doesn't
+    affect `fully_verified`."""
 
     verified_at: datetime
     trust_root: str

@@ -108,7 +108,9 @@ from provenance.policy.models import Decision, PolicyOutcome
 # 1.1.0: runner environment read from the cert where it describes the
 # build job, and from neither the cert nor the predicate when a reusable
 # workflow signed; predicate claims cross-checked against the cert.
-POLICY_VERSION = "1.1.0"
+# 1.2.0: a cert extension that's present but undecodable is a DENY, not
+# a silent fallback to the predicate.
+POLICY_VERSION = "1.2.0"
 
 # Hand-seeded, same spirit as associate.py's stub artifact table — a
 # maintained allowlist in production, a fixed dict here. Maps builder_id
@@ -207,6 +209,14 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
 
     if not item.verification.fully_verified:
         return [f"{item.raw_digest}: verification did not fully pass ({item.verification.error})"]
+
+    # Every cert fact below treats None as "the cert doesn't say" and
+    # falls back to the predicate; an unreadable extension isn't that.
+    if item.verification.cert_decode_errors:
+        return [
+            f"{item.raw_digest}: cert extension(s) present but undecodable, so "
+            f"cert facts can't be relied on: {item.verification.cert_decode_errors}"
+        ]
 
     if item.verification.issuer not in _ACCEPTABLE_ISSUERS:
         reasons.append(
