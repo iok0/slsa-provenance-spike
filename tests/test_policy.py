@@ -19,10 +19,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from provenance.api.demo_bootstrap import seed_from_fixtures
 from provenance.models.evidence import EvidenceItem
 from provenance.models.provenance import CanonicalProvenance
-from provenance.models.verification import VerificationRecord
+from provenance.models.verification import CertClaims, VerificationRecord
 from provenance.policy import evaluate as evaluate_module
 from provenance.policy.evaluate import evaluate
 from provenance.policy.models import PolicyOutcome
@@ -38,16 +40,26 @@ def _real_evidence_set(fixture_dir: str) -> list[EvidenceItem]:
 def test_real_ruff_fixture_denied_for_self_hosted_runner():
     decision = evaluate(_real_evidence_set("ruff-0.16.7-linux-x86_64-slsa-v1"))
 
+    assert decision.policy_version == "1.1.0"
+    # One reason only: the predicate agrees with its cert on runner,
+    # source repo and revision, so no contradiction is raised — and the
+    # denial rests on the cert's runner claim, not ruff's own predicate.
+    [reason] = decision.reasons
     assert decision.outcome is PolicyOutcome.DENY
-    assert decision.policy_version == "1.0.0"
-    assert any("not github-hosted" in r for r in decision.reasons)
+    assert "not github-hosted (per the Fulcio cert)" in reason
 
 
 def test_real_scorecard_fixture_denied_for_missing_signal():
     decision = evaluate(_real_evidence_set("scorecard-5.5.0-darwin-amd64-slsa-v0.2"))
 
+    # The cert says github-hosted, but it was requested by
+    # slsa-github-generator's reusable workflow, so it describes the
+    # generator's job, not the build: still cannot confirm. The predicate's
+    # source_repo agrees with the cert (no contradiction reason).
+    [reason] = decision.reasons
     assert decision.outcome is PolicyOutcome.DENY
-    assert any("cannot confirm" in r for r in decision.reasons)
+    assert "cannot confirm" in reason
+    assert "reusable workflow" in reason
 
 
 def _minimal_verification(**overrides) -> VerificationRecord:
@@ -69,6 +81,32 @@ def _minimal_verification(**overrides) -> VerificationRecord:
     )
     defaults.update(overrides)
     return VerificationRecord(**defaults)
+
+
+_RUFF_WORKFLOW = "https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main"
+
+
+def _calling_workflow_claims(**overrides) -> CertClaims:
+    """Cert claims shaped like attest-build-provenance's: the signer is the
+    calling workflow itself (.9 == .18), so its runner claim covers the
+    build job."""
+    defaults = dict(
+        build_signer_uri=_RUFF_WORKFLOW,
+        build_config_uri=_RUFF_WORKFLOW,
+        runner_environment="github-hosted",
+        source_repo_uri="https://github.com/astral-sh/ruff",
+        source_repo_digest="b5dba861cc38e3f7fb4524c9ceba3e01a474ea13",
+    )
+    defaults.update(overrides)
+    return CertClaims(**defaults)
+
+
+def _predicate_runner(runner_environment: str) -> dict:
+    return {
+        "buildDefinition": {
+            "internalParameters": {"github": {"runner_environment": runner_environment}}
+        }
+    }
 
 
 def _minimal_provenance(**overrides) -> CanonicalProvenance:
@@ -237,3 +275,122 @@ def test_empty_evidence_set_is_denied():
     decision = evaluate([])
     assert decision.outcome is PolicyOutcome.DENY
     assert decision.reasons == ["no evidence for this artifact"]
+
+
+def test_constructed_cert_runner_claim_alone_is_enough_to_allow():
+    """The predicate carries no runner signal at all; the cert's, which
+    covers the build job here, is what confirms it."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(cert_claims=_calling_workflow_claims()),
+        provenance=_minimal_provenance(),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.ALLOW
+    assert decision.reasons == []
+
+
+def test_constructed_predicate_runner_contradicting_cert_is_denied():
+    """Another step in an attest-build-provenance job holds the same
+    id-token and can sign a predicate claiming github-hosted on a
+    self-hosted runner. The cert, filled in by Fulcio from GitHub's token,
+    can't be talked into agreeing."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(
+            cert_claims=_calling_workflow_claims(runner_environment="self-hosted")
+        ),
+        provenance=_minimal_provenance(raw_unmapped=_predicate_runner("github-hosted")),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert any(
+        "predicate runner_environment 'github-hosted' contradicts the Fulcio cert's "
+        "'self-hosted'" in r
+        for r in decision.reasons
+    )
+    assert any("not github-hosted (per the Fulcio cert)" in r for r in decision.reasons)
+
+
+def test_constructed_cert_runner_claim_without_signer_claims_is_not_used():
+    """A cert with a runner claim but no `.9`/`.18` doesn't say whose job
+    the claim describes, so the predicate decides — as in policy 1.0.0."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(
+            cert_claims=_calling_workflow_claims(build_signer_uri=None, build_config_uri=None)
+        ),
+        provenance=_minimal_provenance(raw_unmapped=_predicate_runner("self-hosted")),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert decision.reasons == [
+        f"deadbeef: builder {_RUFF_WORKFLOW!r}'s claimed level 3 is documented for "
+        "GitHub-hosted runners; this attestation's runner_environment was not "
+        "github-hosted (per the provenance predicate)"
+    ]
+
+
+@pytest.mark.parametrize(
+    "predicate_runner",
+    ["github-hosted", "self-hosted"],
+    ids=["predicate_github_hosted", "predicate_self_hosted"],
+)
+def test_constructed_reusable_workflow_runner_claims_are_not_used(predicate_runner):
+    """A reusable workflow's cert describes its own job, not the build — and
+    so does a predicate written by a step inside it, self-asserted to boot.
+    Neither confirms the build's runner, so the predicate can't fill the gap
+    the cert leaves: a github-hosted predicate claim must not ALLOW."""
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(
+            cert_claims=_calling_workflow_claims(
+                build_config_uri="https://github.com/astral-sh/ruff/.github/workflows/caller.yml@refs/heads/main"
+            )
+        ),
+        provenance=_minimal_provenance(raw_unmapped=_predicate_runner(predicate_runner)),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    [reason] = decision.reasons
+    assert "cannot confirm" in reason
+    assert f"signed by reusable workflow {_RUFF_WORKFLOW!r}" in reason
+
+
+@pytest.mark.parametrize(
+    ("provenance_overrides", "expected"),
+    [
+        (
+            {"source_repo": "https://github.com/someone-else/fork"},
+            "predicate source_repo 'https://github.com/someone-else/fork' contradicts "
+            "the Fulcio cert's 'https://github.com/astral-sh/ruff'",
+        ),
+        (
+            {"source_revision": "0" * 40},
+            f"predicate source_revision {'0' * 40!r} contradicts the Fulcio cert's "
+            "'b5dba861cc38e3f7fb4524c9ceba3e01a474ea13'",
+        ),
+    ],
+    ids=["source_repo", "source_revision"],
+)
+def test_constructed_predicate_source_contradicting_cert_is_denied(
+    provenance_overrides, expected
+):
+    item = EvidenceItem(
+        raw_digest="deadbeef",
+        verification=_minimal_verification(cert_claims=_calling_workflow_claims()),
+        provenance=_minimal_provenance(**provenance_overrides),
+    )
+
+    decision = evaluate([item])
+
+    assert decision.outcome is PolicyOutcome.DENY
+    assert decision.reasons == [f"deadbeef: {expected}"]

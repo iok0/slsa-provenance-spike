@@ -9,12 +9,13 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from provenance.verify.verifier import _extract_identity
+from provenance.models.verification import CertClaims
+from provenance.verify.verifier import _extract_cert_claims, _extract_identity
 
 
 def test_extract_identity_is_none_for_cert_without_fulcio_extensions():
-    """A cert with no SAN and no Fulcio issuer extension yields None for
-    both — absent, not an empty-string fact."""
+    """A cert with no SAN and no Fulcio extensions yields None for every
+    identity fact and cert claim — absent, not an empty-string fact."""
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "not-fulcio")])
     now = datetime.now(timezone.utc)
@@ -30,3 +31,4 @@ def test_extract_identity_is_none_for_cert_without_fulcio_extensions():
     )
 
     assert _extract_identity(cert) == (None, None)
+    assert _extract_cert_claims(cert) == CertClaims()

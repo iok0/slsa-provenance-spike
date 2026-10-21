@@ -17,7 +17,10 @@ looking at the real bytes, recorded here rather than left implicit:
 the same URI+digest, and SPIKE-derived design notes mention materials[]
 as a fallback when configSource is absent — but no fixture exercises that
 absence, so that fallback branch is not written here. It's a named,
-unexercised extension point, not implemented code.
+unexercised extension point, not implemented code. `source_repo` has
+the URI's `git+` prefix and `@ref` stripped (see the field's docstring);
+the ref itself survives in `dependencies`, which keep `materials[]` URIs
+verbatim.
 """
 
 from __future__ import annotations
@@ -25,10 +28,11 @@ from __future__ import annotations
 from typing import Any
 
 from provenance.models.provenance import CanonicalProvenance, Dependency
-from provenance.normalize._util import without_paths
+from provenance.normalize._util import strip_git_ref, without_paths
 
 ADAPTER_ID = "slsa_provenance_v0_2"
-ADAPTER_VERSION = "1.0.0"
+# 1.1.0: source_repo normalized to a plain repository URL.
+ADAPTER_VERSION = "1.1.0"
 
 _MAPPED_PATHS = [
     ["builder"],
@@ -45,6 +49,7 @@ def adapt(statement: dict[str, Any]) -> CanonicalProvenance:
     predicate = statement["predicate"]
 
     config_source = predicate.get("invocation", {}).get("configSource", {})
+    source_uri = config_source.get("uri")
     source_revision = config_source.get("digest", {}).get("sha1")
 
     dependencies = [
@@ -59,7 +64,7 @@ def adapt(statement: dict[str, Any]) -> CanonicalProvenance:
         adapter_version=ADAPTER_VERSION,
         builder_id=predicate.get("builder", {}).get("id"),
         build_type=predicate.get("buildType"),
-        source_repo=config_source.get("uri"),
+        source_repo=strip_git_ref(source_uri) if source_uri is not None else None,
         source_revision=source_revision,
         invocation_id=predicate.get("metadata", {}).get("buildInvocationID"),
         started_at=None,  # genuinely absent from the real predicate — see module docstring

@@ -34,7 +34,7 @@ from __future__ import annotations
 from typing import Any
 
 from provenance.models.provenance import CanonicalProvenance, Dependency
-from provenance.normalize._util import without_paths
+from provenance.normalize._util import strip_git_ref, without_paths
 
 ADAPTER_ID = "slsa_provenance_v1_0"
 ADAPTER_VERSION = "1.0.0"
@@ -59,14 +59,6 @@ class UnsupportedBuildType(ValueError):
     """
 
 
-def _strip_git_ref(uri: str) -> str:
-    """"git+https://github.com/astral-sh/ruff@refs/heads/main" ->
-    "https://github.com/astral-sh/ruff" — exact-match only, see module
-    docstring on what this does not normalize."""
-    uri = uri.removeprefix("git+")
-    return uri.split("@", 1)[0]
-
-
 def adapt(statement: dict[str, Any]) -> CanonicalProvenance:
     """Normalize one SLSA v1.0 in-toto Statement into the canonical model."""
     predicate_type = statement["predicateType"]
@@ -85,7 +77,7 @@ def adapt(statement: dict[str, Any]) -> CanonicalProvenance:
 
     source_revision = None
     for dep in resolved_dependencies:
-        if _strip_git_ref(dep["uri"]) == workflow_repo:
+        if strip_git_ref(dep["uri"]) == workflow_repo:
             source_revision = dep.get("digest", {}).get("gitCommit")
             break
 

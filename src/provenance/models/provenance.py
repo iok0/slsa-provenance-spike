@@ -62,6 +62,11 @@ class CanonicalProvenance(BaseModel):
     build_type: str | None = None
 
     source_repo: str | None = None
+    """The repository as a plain URL, no `git+` scheme prefix or `@ref`
+    suffix (e.g. `https://github.com/astral-sh/ruff`) — the same form as
+    Fulcio's source-repository cert claim, so EVALUATE can compare the two
+    directly. Adapters normalize to this; the ref, where the predicate has
+    one, is kept in `dependencies`."""
 
     source_revision: str | None = None
     """A git commit-ish string. Deliberately flattened to a plain string
