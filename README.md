@@ -88,7 +88,7 @@ That test runs against the real bundle.
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 58 tests; verification hits the network for the TUF root
+uv run pytest -v          # 64 tests; verification hits the network for the TUF root
 uv run python scripts/run_demo_api.py
 curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```

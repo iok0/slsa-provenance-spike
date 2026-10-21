@@ -480,6 +480,16 @@ predicate contradicting its cert is denied) and `test_constructed_reusable_workf
 (neither the cert's nor the predicate's runner claim confirms a reusable workflow's build), plus
 both real fixtures' extracted claims pinned in `tests/test_raw_store_and_verify.py`.
 
+Found later: **an unreadable cert claim looked like an absent one.** Extraction turned any
+error into `None`, and `None` means "the cert doesn't say", which hands the runner decision to
+the predicate. A `.11` that wasn't a DER UTF8String (or an unreadable `.9`/`.18`, which hides a
+reusable-workflow signer) would therefore let a predicate's `github-hosted` ALLOW. A signer
+can't cause this, since Fulcio writes the extensions, but a Fulcio encoding change or bug could.
+Now only a missing extension is `None`. Anything present but unreadable, the SAN included, is
+listed in `VerificationRecord.cert_decode_errors`, and policy `1.2.0` denies on it. Tests:
+`tests/test_verifier.py` (extraction) and
+`test_constructed_undecodable_cert_runner_claim_does_not_fall_back_to_predicate`.
+
 Not built yet: **source binding.** Policy allowlists the builder (the SAN), so any repo using
 generator v2.1.0 gets past the builder check. `.12`/`.18` now sit on the record, vouched for by
 Fulcio, so builder trust and source trust can be checked separately - the way out of
@@ -546,7 +556,7 @@ raw-store model says it should), and asserts verification now fails:
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 ```
 
-The full suite is 58 tests, each against the two real fixtures above or explicitly labelled
+The full suite is 64 tests, each against the two real fixtures above or explicitly labelled
 constructed evidence. The full list and the mutation-testing results are in
 [TESTING.md](TESTING.md).
 
@@ -583,6 +593,7 @@ constructed evidence. The full list and the mutation-testing results are in
           "source_repo_digest": "b5dba861cc38e3f7fb4524c9ceba3e01a474ea13",
           "build_config_uri": "https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main"
         },
+        "cert_decode_errors": [],
         "verified_at": "2026-09-13T20:41:15.072283Z",
         "trust_root": "production",
         "payload_type": "application/vnd.in-toto+json",
@@ -627,7 +638,7 @@ constructed evidence. The full list and the mutation-testing results are in
     "reasons": [
       "51bd5bab...: builder '...ruff/.../release.yml@refs/heads/main''s claimed level 3 is documented for GitHub-hosted runners; this attestation's runner_environment was not github-hosted (per the Fulcio cert)"
     ],
-    "policy_version": "1.1.0"
+    "policy_version": "1.2.0"
   }
 }
 ```
@@ -667,7 +678,7 @@ elided here for legibility:
     "reasons": [
       "95ae0e8e...: builder '...slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0''s claimed level 3 depends on runner isolation that https://slsa.dev/provenance/v0.2 evidence does not expose a signal for (signed by reusable workflow '...slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0': any runner_environment, in the cert or the predicate, describes that workflow's own job, not the build) - cannot confirm"
     ],
-    "policy_version": "1.1.0"
+    "policy_version": "1.2.0"
   }
 }
 ```
@@ -909,7 +920,7 @@ TESTING.md        Full test list, real-vs-constructed evidence, mutation-testing
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 58 tests; verification tests hit the network - see risk note above
+uv run pytest -v          # 64 tests; verification tests hit the network - see risk note above
 uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```

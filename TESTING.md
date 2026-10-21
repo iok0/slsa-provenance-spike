@@ -16,13 +16,15 @@ Every test runs against one of two kinds of input, never a blend:
   contradicts its cert, ...). Policy tests built this way are named `test_constructed_*`, so
   nothing constructed is passed off as real.
 
-Plus one unit test that builds a throwaway self-signed cert, to check that identity and cert
-claims come back `None` (absent), not empty strings, when the Fulcio extensions are missing.
+Plus unit tests in `tests/test_verifier.py` that build throwaway self-signed certs. They check
+that identity and cert claims come back `None` (absent), not empty strings, when the Fulcio
+extensions are missing, and that an extension that's present but undecodable is recorded in
+`cert_decode_errors` rather than passing as absent.
 
 The real-fixture verification tests fetch the live TUF trust root, so they need the network -
 see DESIGN.md's "A present risk" section.
 
-## Full suite (58 tests)
+## Full suite (64 tests)
 
 ```
 tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED
@@ -58,6 +60,7 @@ tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set
 tests/test_policy.py::test_empty_evidence_set_is_denied PASSED
 tests/test_policy.py::test_constructed_cert_runner_claim_alone_is_enough_to_allow PASSED
 tests/test_policy.py::test_constructed_predicate_runner_contradicting_cert_is_denied PASSED
+tests/test_policy.py::test_constructed_undecodable_cert_runner_claim_does_not_fall_back_to_predicate PASSED
 tests/test_policy.py::test_constructed_cert_runner_claim_without_signer_claims_is_not_used PASSED
 tests/test_policy.py::test_constructed_reusable_workflow_runner_claims_are_not_used[predicate_github_hosted] PASSED
 tests/test_policy.py::test_constructed_reusable_workflow_runner_claims_are_not_used[predicate_self_hosted] PASSED
@@ -83,8 +86,13 @@ tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_
 tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-False] PASSED
 tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-None] PASSED
 tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_extensions PASSED
+tests/test_verifier.py::test_undecodable_claim_is_recorded_not_mistaken_for_absent[runner_environment-11] PASSED
+tests/test_verifier.py::test_undecodable_claim_is_recorded_not_mistaken_for_absent[build_config_uri-18] PASSED
+tests/test_verifier.py::test_trailing_bytes_after_claim_are_a_decode_error PASSED
+tests/test_verifier.py::test_malformed_san_is_recorded_not_mistaken_for_absent PASSED
+tests/test_verifier.py::test_san_without_uri_is_absent_not_an_error PASSED
 
-============================== 58 passed in ~9s ==============================
+============================== 64 passed in ~9s ==============================
 ```
 
 ## Mutation testing
