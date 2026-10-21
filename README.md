@@ -43,7 +43,9 @@ to demonstrate:
 - **Identity-bound policy evaluation** - separating verification, normalization, and policy so a
   self-asserted field can never allowlist itself. `builder_id` - the one field in the signed
   payload that policy allowlists on - is only trusted once it's checked against the identity
-  the cryptography actually verified.
+  the cryptography actually verified; and where the Fulcio cert vouches for a claim the
+  predicate also makes (runner, source repo, revision), the cert decides and the predicate is
+  only a cross-check.
 - **Real-evidence testing and named scope boundaries.** Every claim above is checked against
   two independently-signed real Sigstore bundles, not synthetic fixtures, and everything not
   built (SBOM, corpus policy, a wired policy engine) is named as a scoping decision rather than
@@ -81,6 +83,7 @@ VERIFIED FACTS               "we verified X"
   from verification:
     artifact_digest(s)
     signing identity + issuer
+    CI claims Fulcio copied into the cert (runner, source, workflow)
     verification result (+ when, + against which trust root)
   from normalization (per-version adapters):
     builder_id, build_type
@@ -190,8 +193,8 @@ policy time:
       ┌───────────────────────────┐     ┌───────────────────────────┐
       │     VerificationRecord    │     │     CanonicalProvenance    │
       │ signature/chain/sct/tlog  │     │  builder_id, build_type,   │
-      │ identity, issuer (facts,  │     │  source_repo, revision,... │
-      │ not yet trust decisions)  │     │  (facts, not yet decisions)│
+      │ identity, issuer, cert    │     │  source_repo, revision,... │
+      │ claims (facts, not trust) │     │  (facts, not yet decisions)│
       └───────────────┬───────────┘     └───────────────┬───────────┘
                        │                                 │
                        └────────────────┬────────────────┘
@@ -254,8 +257,9 @@ swap is a backend change behind an unchanged call site.
 **Verify from raw** (`verify/verifier.py`): cryptographic verification only - signature over
 PAE, cert chain to the Fulcio root, SCT, Rekor inclusion - sourced from bytes read back *from
 the store*, never from whatever the caller originally handed in. That's what makes "verify
-from raw" a guarantee rather than a convention. Identity (cert SAN) and issuer (OIDC issuer
-extension) are *extracted* as facts, independent of whether verification passed; deciding
+from raw" a guarantee rather than a convention. Identity (cert SAN), issuer (OIDC issuer
+extension) and the CI claims Fulcio copies into the cert (runner environment, source repo and
+commit, signing and calling workflow) are *extracted* as facts, independent of whether verification passed; deciding
 whether an identity is *trusted* is EVALUATE's job, not VERIFY's. Concretely, this runs
 sigstore-python's own `policy.UnsafeNoOp()` - its own name for "prove the crypto, assert
 nothing about who signed it" - deliberately, not by omission. It's a precise, one-line proof,
@@ -264,7 +268,7 @@ kept apart in code, not just described as separate in prose.
 
 **Verification result is a structured record, not a boolean** (`models/verification.py`):
 `signature_verified`, `chain_verified`, `sct_verified`, `tlog_verified`, `identity`, `issuer`,
-`verified_at`, `trust_root`. A field is `None` when that check was never reached or can't be
+`cert_claims`, `verified_at`, `trust_root`. A field is `None` when that check was never reached or can't be
 confirmed to have run - distinct from `False`, which means the check specifically ran and
 failed; collapsing "unknown" into "failed" would let the record imply more certainty than
 verification actually earned. In practice a failure leaves all four `None`: `sigstore-python`
@@ -330,8 +334,8 @@ work, struck from this spike deliberately: it can be dropped in later without to
 input-document contract, which is the actual artifact here.
 
 The decision function itself is deliberately small - a short chain of boolean checks
-(verification passed, issuer acceptable, builder identity confirmed, runner isolation
-confirmed) collapsing to ALLOW or DENY, never a graduated score. The evidence → facts →
+(verification passed, issuer acceptable, builder identity confirmed, predicate consistent with
+its cert, runner isolation confirmed) collapsing to ALLOW or DENY, never a graduated score. The evidence → facts →
 decisions layering above isn't there because that function is complex - it's there
 because a function this small is exactly where conflating a self-asserted field with a
 verified one goes unnoticed, not despite being simple (see the `builder_id` bullet
@@ -391,6 +395,9 @@ property the code makes hard to violate:
 - `VerificationRecord`'s `None` (not reached) vs. `False` (checked and failed) split is
   enforced by the exception-handling branch in `verifier.py`; the code never backfills a
   guessed `False` for a check that was never attempted.
+- Where the cert and the predicate both make a claim, the cert decides and a predicate that
+  contradicts it is a DENY (`_cert_contradictions` in `policy/evaluate.py`) - a self-asserted
+  field can't outvote the third-party-vouched one.
 - VERIFY runs with sigstore-python's `UnsafeNoOp` policy - asserting no identity - so identity
   *trust* structurally cannot leak into the verification step.
 - `CanonicalProvenance` is never returned or stored without an `EvidenceItem` wrapper carrying
@@ -434,42 +441,54 @@ since neither real fixture reaches this branch either).
 
 ## Found after publishing: the Fulcio cert already vouches for runner and source
 
-Policy reads `runner_environment` out of the *predicate* - content the signer wrote about
-itself. Dumping both fixture certs' extensions afterwards showed Fulcio already copies the
+Policy originally read `runner_environment` out of the *predicate* - content the signer wrote
+about itself. Dumping both fixture certs' extensions afterwards showed Fulcio already copies the
 same claims, and more, out of GitHub's signed OIDC token into the leaf cert (OIDs in
 [CRYPTOGRAPHY.md](CRYPTOGRAPHY.md)) - vouched for by a third party, not self-asserted:
 
 | Fulcio extension | ruff (v1.0) | scorecard (v0.2) |
 |---|---|---|
-| `.11` runner environment | `self-hosted` | `github-hosted` |
 | `.9` build signer URI (= SAN) | `astral-sh/ruff/.../release.yml@refs/heads/main` | `slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0` |
+| `.11` runner environment | `self-hosted` | `github-hosted` |
 | `.12` source repo URI | `https://github.com/astral-sh/ruff` | `https://github.com/ossf/scorecard` |
 | `.13` source repo digest | `b5dba861...` | `c395761d...` |
 | `.18` build config URI | `astral-sh/ruff/.../release.yml@refs/heads/main` | `ossf/scorecard/.../goreleaser.yaml@refs/tags/v5.5.0` |
 
-What it changes, and what it doesn't:
+So VERIFY now records these five as `VerificationRecord.cert_claims`, and EVALUATE (policy
+`1.1.0`) **prefers what the cert vouches for over what the payload says** wherever both exist:
 
-- **ruff's DENY gets stronger.** The cert says `self-hosted` too - the denial now rests on a
-  claim Fulcio vouches for, not only on ruff's own predicate.
-- **scorecard's "cannot confirm" does *not* simply flip to ALLOW.** `.11` describes the runner
-  of the job that requested the cert. For `attest-build-provenance` (ruff) that's the build
-  job. For slsa-github-generator's reusable workflow it's the *generator's* job - the generic
-  generator's caller builds the artifact in its own job and passes hashes in. So scorecard's
-  cert proves the provenance was generated on a GitHub-hosted runner, not that the build was.
-- **The source-binding gap closes.** Policy allowlists the builder (the SAN), so as written any
-  repo using generator v2.1.0 gets past the builder check. `.12` / `.18` name the source repo
-  and the *calling* workflow, vouched for by Fulcio - so builder trust (SAN) and source trust
-  (`.12`/`.18` against the package's expected source) can be checked separately. This is the
-  way out of CRYPTOGRAPHY.md's reusable-workflow SAN gotcha.
-- **The predicate agrees with the cert on both fixtures.** `source_revision` matches `.13`
-  exactly; `source_repo` matches `.12` exactly for ruff, and only after stripping `git+` and
-  `@ref` for scorecard - the same URI-matching weakness `v1_0.py`'s docstring already names.
+- **Runner environment comes from the cert - when the cert describes the build.** `.11` is the
+  runner of the job that requested the cert. When the signer *is* the calling workflow
+  (`.9 == .18`, as for `attest-build-provenance`), that's the build job, and the cert decides.
+  For a reusable workflow (`.9 != .18`, slsa-github-generator) it's the *generator's* job - the
+  caller built the artifact elsewhere and passed hashes in - so it's ignored rather than
+  mistaken for a build-runner signal. So is the predicate's runner claim in that case: a step
+  inside the same reusable workflow wrote it, so it has the same scope problem and is
+  self-asserted too. A reusable-workflow signer is "cannot confirm" outright; the predicate's
+  runner claim only stands alone when the cert doesn't say who signed.
+- **The predicate becomes a cross-check.** Source repo, source revision and (where comparable)
+  runner environment must agree with the cert; a contradiction is a DENY. This closes the hole
+  the `builder_id` fix above left open for `attest-build-provenance`: another step in the same
+  job holds the same `id-token` and can sign a predicate claiming `github-hosted` on a
+  self-hosted runner - but it can't make Fulcio say so.
+- **Neither real decision flips.** ruff is still DENY, now because the cert says `self-hosted`
+  rather than because ruff's own predicate does. scorecard is still "cannot confirm": its cert
+  says `github-hosted`, but that's the generator job, not the build - and the DENY reason now
+  says so. The predicate agrees with the cert on every compared field for both fixtures
+  (scorecard's `git+...@ref` source repo only after stripping, the same URI-matching weakness
+  `v1_0.py`'s docstring names), so neither picks up a contradiction.
 
-Not built, deliberately: changing `evaluate.py` would rewrite every quoted DENY reason and API
-response in this README. The next step is named instead: extract `.9`/`.11`/`.12`/`.13`/`.18`
-into `VerificationRecord` in `verifier.py` and have policy **prefer claims the cert vouches for
-over claims in the payload** wherever both exist, with the predicate value used only as a
-cross-check (a mismatch is a DENY).
+Tests: `tests/test_policy.py::test_constructed_*cert*` (the cert alone is enough to ALLOW; a
+predicate contradicting its cert is denied) and `test_constructed_reusable_workflow_runner_claims_are_not_used`
+(neither the cert's nor the predicate's runner claim confirms a reusable workflow's build), plus
+both real fixtures' extracted claims pinned in `tests/test_raw_store_and_verify.py`.
+
+Not built yet: **source binding.** Policy allowlists the builder (the SAN), so any repo using
+generator v2.1.0 gets past the builder check. `.12`/`.18` now sit on the record, vouched for by
+Fulcio, so builder trust and source trust can be checked separately - the way out of
+CRYPTOGRAPHY.md's reusable-workflow SAN gotcha - but the check needs a per-artifact *expected*
+source, which means `evaluate()` taking the associated artifact as input, not only its evidence
+set.
 
 ## Demo
 
@@ -500,7 +519,7 @@ different builder identity, different signing workflow - normalized into the sam
 | `adapter_id` | `slsa_provenance_v1_0` | `slsa_provenance_v0_2` |
 | `builder_id` | `.../ruff/.github/workflows/release.yml@refs/heads/main` | `.../slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0` |
 | `build_type` | `https://actions.github.io/buildtypes/workflow/v1` | `https://github.com/slsa-framework/slsa-github-generator/generic@v1` |
-| `source_repo` | `https://github.com/astral-sh/ruff` | `git+https://github.com/ossf/scorecard@refs/tags/v5.5.0` |
+| `source_repo` | `https://github.com/astral-sh/ruff` | `https://github.com/ossf/scorecard` (from `git+...@refs/tags/v5.5.0`; the ref stays in `dependencies`) |
 | `source_revision` | `b5dba861cc38e3f7fb4524c9ceba3e01a474ea13` | `c395761df6afe1a69e476bc60a013a94bcbc153f` |
 | `invocation_id` | full run URL | opaque `{run_id}-{attempt}` string |
 
@@ -530,66 +549,72 @@ raw-store model says it should), and asserts verification now fails:
 tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [100%]
 ```
 
-Full suite, for completeness - 51 tests, all against the two real fixtures above or explicitly
-labeled constructed evidence (constructed predicates, records and store layouts), plus one unit
-test of the verifier's cert-identity extraction on a throwaway self-signed cert:
+Full suite, for completeness - 58 tests, all against the two real fixtures above or explicitly
+labeled constructed evidence (constructed predicates, records, cert claims and store layouts),
+plus one unit test of the verifier's cert-identity and cert-claim extraction on a throwaway
+self-signed cert:
 
 ```
-tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED    [  1%]
-tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED [  3%]
-tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED [  5%]
-tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED    [  7%]
-tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED [  9%]
-tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED [ 11%]
-tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED [ 13%]
-tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED [ 15%]
-tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED   [ 17%]
-tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED  [ 19%]
-tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate0] PASSED [ 21%]
-tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate1] PASSED [ 23%]
-tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate2] PASSED [ 25%]
-tests/test_normalize.py::test_adapt_v0_2_material_without_digest_gets_empty_digest PASSED [ 27%]
-tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement0] PASSED [ 29%]
-tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement1] PASSED [ 31%]
-tests/test_normalize.py::test_adapt_v1_0_source_dependency_without_digest PASSED [ 33%]
-tests/test_normalize.py::test_without_paths_removes_only_claimed_leaves_and_copies PASSED [ 35%]
-tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path0] PASSED [ 37%]
-tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path1] PASSED [ 39%]
-tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path2] PASSED [ 41%]
-tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED [ 43%]
-tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED [ 45%]
-tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED [ 47%]
-tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED  [ 49%]
-tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED [ 50%]
-tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED  [ 52%]
-tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED [ 54%]
-tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED [ 56%]
-tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED [ 58%]
-tests/test_policy.py::test_empty_evidence_set_is_denied PASSED           [ 60%]
-tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED [ 62%]
-tests/test_raw_store_and_verify.py::test_store_creates_missing_parent_directories PASSED [ 64%]
-tests/test_raw_store_and_verify.py::test_on_disk_layout_is_stable PASSED [ 66%]
-tests/test_raw_store_and_verify.py::test_put_into_an_existing_fan_out_directory PASSED [ 68%]
-tests/test_raw_store_and_verify.py::test_get_unknown_digest_raises_key_error_naming_it PASSED [ 70%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED [ 72%]
-tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED [ 74%]
-tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED [ 76%]
-tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs0-False-production] PASSED [ 78%]
-tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs1-True-production-offline] PASSED [ 80%]
-tests/test_verification_record.py::test_fully_verified_when_every_check_passed PASSED [ 82%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-False] PASSED [ 84%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-None] PASSED [ 86%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-False] PASSED [ 88%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-None] PASSED [ 90%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-False] PASSED [ 92%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-None] PASSED [ 94%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-False] PASSED [ 96%]
-tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-None] PASSED [ 98%]
-tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_extensions PASSED [100%]
+tests/test_api.py::test_get_provenance_for_known_ruff_artifact PASSED
+tests/test_api.py::test_get_provenance_for_known_scorecard_artifact PASSED
+tests/test_api.py::test_constructed_multi_pipeline_evidence_set_denied_on_builder_disagreement PASSED
+tests/test_api.py::test_unknown_digest_for_known_tenant_is_404 PASSED
+tests/test_api.py::test_known_digest_wrong_tenant_is_404_not_leaked PASSED
+tests/test_normalize.py::test_adapt_v0_2_matches_real_scorecard_fixture PASSED
+tests/test_normalize.py::test_adapt_v1_0_matches_real_ruff_fixture PASSED
+tests/test_normalize.py::test_v0_2_and_v1_0_converge_on_the_same_canonical_shape PASSED
+tests/test_normalize.py::test_unsupported_predicate_type_raises PASSED
+tests/test_normalize.py::test_unsupported_v1_0_build_type_raises PASSED
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate0] PASSED
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate1] PASSED
+tests/test_normalize.py::test_adapt_v0_2_tolerates_absent_optional_fields[predicate2] PASSED
+tests/test_normalize.py::test_adapt_v0_2_material_without_digest_gets_empty_digest PASSED
+tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement0] PASSED
+tests/test_normalize.py::test_adapt_v1_0_tolerates_absent_optional_fields[statement1] PASSED
+tests/test_normalize.py::test_adapt_v1_0_source_dependency_without_digest PASSED
+tests/test_normalize.py::test_without_paths_removes_only_claimed_leaves_and_copies PASSED
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path0] PASSED
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path1] PASSED
+tests/test_normalize.py::test_without_paths_ignores_paths_that_dont_exist[path2] PASSED
+tests/test_policy.py::test_real_ruff_fixture_denied_for_self_hosted_runner PASSED
+tests/test_policy.py::test_real_scorecard_fixture_denied_for_missing_signal PASSED
+tests/test_policy.py::test_constructed_github_hosted_evidence_is_allowed PASSED
+tests/test_policy.py::test_constructed_issuer_mismatch_is_denied PASSED
+tests/test_policy.py::test_constructed_builder_id_identity_mismatch_is_denied PASSED
+tests/test_policy.py::test_constructed_unknown_builder_is_denied PASSED
+tests/test_policy.py::test_constructed_builder_below_required_level_is_denied PASSED
+tests/test_policy.py::test_constructed_unverified_evidence_is_denied PASSED
+tests/test_policy.py::test_constructed_conflicting_builder_identities_in_one_set_is_denied PASSED
+tests/test_policy.py::test_empty_evidence_set_is_denied PASSED
+tests/test_policy.py::test_constructed_cert_runner_claim_alone_is_enough_to_allow PASSED
+tests/test_policy.py::test_constructed_predicate_runner_contradicting_cert_is_denied PASSED
+tests/test_policy.py::test_constructed_cert_runner_claim_without_signer_claims_is_not_used PASSED
+tests/test_policy.py::test_constructed_reusable_workflow_runner_claims_are_not_used[predicate_github_hosted] PASSED
+tests/test_policy.py::test_constructed_reusable_workflow_runner_claims_are_not_used[predicate_self_hosted] PASSED
+tests/test_policy.py::test_constructed_predicate_source_contradicting_cert_is_denied[source_repo] PASSED
+tests/test_policy.py::test_constructed_predicate_source_contradicting_cert_is_denied[source_revision] PASSED
+tests/test_raw_store_and_verify.py::test_put_is_content_addressed_and_idempotent PASSED
+tests/test_raw_store_and_verify.py::test_store_creates_missing_parent_directories PASSED
+tests/test_raw_store_and_verify.py::test_on_disk_layout_is_stable PASSED
+tests/test_raw_store_and_verify.py::test_put_into_an_existing_fan_out_directory PASSED
+tests/test_raw_store_and_verify.py::test_get_unknown_digest_raises_key_error_naming_it PASSED
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_real_bundle PASSED
+tests/test_raw_store_and_verify.py::test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version PASSED
+tests/test_raw_store_and_verify.py::test_byte_flip_breaks_verification PASSED
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs0-False-production] PASSED
+tests/test_raw_store_and_verify.py::test_offline_flag_reaches_trust_root_and_is_recorded[kwargs1-True-production-offline] PASSED
+tests/test_verification_record.py::test_fully_verified_when_every_check_passed PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-False] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[signature_verified-None] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-False] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[chain_verified-None] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-False] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[sct_verified-None] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-False] PASSED
+tests/test_verification_record.py::test_not_fully_verified_if_any_one_check_did_not_pass[tlog_verified-None] PASSED
+tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_extensions PASSED
 
-============================== 51 passed in ~9s ==============================
-```
-
+============================== 58 passed in ~9s =======================
 ### What the API actually returns
 
 `GET /v1/provenance/acme/sha256:73894c...` (the real ruff fixture) - the full, real response:
@@ -616,6 +641,13 @@ tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_ex
         "tlog_verified": true,
         "identity": "https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main",
         "issuer": "https://token.actions.githubusercontent.com",
+        "cert_claims": {
+          "build_signer_uri": "https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main",
+          "runner_environment": "self-hosted",
+          "source_repo_uri": "https://github.com/astral-sh/ruff",
+          "source_repo_digest": "b5dba861cc38e3f7fb4524c9ceba3e01a474ea13",
+          "build_config_uri": "https://github.com/astral-sh/ruff/.github/workflows/release.yml@refs/heads/main"
+        },
         "verified_at": "2026-09-13T20:41:15.072283Z",
         "trust_root": "production",
         "payload_type": "application/vnd.in-toto+json",
@@ -658,9 +690,9 @@ tests/test_verifier.py::test_extract_identity_is_none_for_cert_without_fulcio_ex
   "trust_decision": {
     "outcome": "DENY",
     "reasons": [
-      "51bd5bab...: builder '...ruff/.../release.yml@refs/heads/main''s claimed level 3 is documented for GitHub-hosted runners; this attestation's runner_environment was not github-hosted"
+      "51bd5bab...: builder '...ruff/.../release.yml@refs/heads/main''s claimed level 3 is documented for GitHub-hosted runners; this attestation's runner_environment was not github-hosted (per the Fulcio cert)"
     ],
-    "policy_version": "1.0.0"
+    "policy_version": "1.1.0"
   }
 }
 ```
@@ -669,15 +701,15 @@ That `DENY` is not a placeholder or a bug to route around before a demo. Run the
 `evaluate()` against both real fixtures in this repo and it denies **both**, for two different
 reasons - checked directly, not assumed:
 
-- **ruff (v1.0)** positively confirms `runner_environment == "self-hosted"` in
-  `internalParameters.github`. Build L3's non-falsifiability guarantee applies to GitHub-*hosted*
+- **ruff (v1.0)**'s Fulcio cert positively confirms `runner_environment == "self-hosted"`
+  (`.11`), and its predicate's `internalParameters.github` agrees. Build L3's non-falsifiability guarantee applies to GitHub-*hosted*
   runners only, not self-hosted (operator-controlled) ones (see the "SLSA level met" bullet
   above for the sourcing) - so this attestation's allowlisted level-3 ceiling doesn't hold: a
   real, positively-confirmed "no."
 - **scorecard (v0.2)** has no equivalent field at all in its predicate - checked by grepping
   its `raw_unmapped`, not assumed absent. v0.2's predicate shape structurally cannot confirm
-  this either way - though the Fulcio cert does carry a runner signal; see "Found after
-  publishing" above for why that doesn't settle it.
+  this either way - and the cert's `github-hosted` describes the reusable generator's job, not
+  the build (see "Found after publishing" above).
 
 Both are treated as "cannot positively confirm the required runner isolation" and denied -
 fail-closed on missing confirmation, not fail-open, since an unconfirmed non-falsifiability
@@ -699,9 +731,9 @@ elided here for legibility:
   "trust_decision": {
     "outcome": "DENY",
     "reasons": [
-      "95ae0e8e...: builder '...slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0''s claimed level 3 depends on runner isolation that https://slsa.dev/provenance/v0.2 evidence does not expose a signal for - cannot confirm"
+      "95ae0e8e...: builder '...slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0''s claimed level 3 depends on runner isolation that https://slsa.dev/provenance/v0.2 evidence does not expose a signal for (signed by reusable workflow '...slsa-github-generator/.../generator_generic_slsa3.yml@refs/tags/v2.1.0': any runner_environment, in the cert or the predicate, describes that workflow's own job, not the build) - cannot confirm"
     ],
-    "policy_version": "1.0.0"
+    "policy_version": "1.1.0"
   }
 }
 ```
@@ -762,8 +794,8 @@ bytes, not by reasoning about the spec from memory:
   (`Identity`, `OIDCIssuer`, `GitHubWorkflowRef`, …) are all *comparison* policies - they assert
   against an expected value and raise, rather than returning the cert's actual value. Recording
   identity/issuer as a fact meant going around the public verify API into `cryptography`'s x509
-  extension API directly, plus a manual DER decode for Fulcio's OIDC-issuer extension - a
-  surprising gap given how central "record who signed this" is to any real usage.
+  extension API directly, plus a manual DER decode for Fulcio's OIDC-issuer extension (and,
+  later, the five CI-claim extensions policy now reads the same way) - a surprising gap given how central "record who signed this" is to any real usage.
 
 ## What I deliberately didn't build
 
@@ -946,7 +978,7 @@ CRYPTOGRAPHY.md   Sigstore keyless-signing background this service depends on bu
 
 ```
 uv sync --locked --extra dev
-uv run pytest -v          # 51 tests; verification tests hit the network - see risk note above
+uv run pytest -v          # 58 tests; verification tests hit the network - see risk note above
 uv run python scripts/run_demo_api.py
 # then: curl http://127.0.0.1:8000/v1/provenance/acme/sha256:73894c7b7c9a53fd66ed715eb3a1ec65077f316328e377057a98bdb7fcba0326
 ```
@@ -964,23 +996,29 @@ cache a plain online `pytest` run leaves behind. Clear `mutants/` before each ru
 incremental cache skips mutants of source functions that haven't changed, so a test-only change
 otherwise isn't scored against them.
 
-Last full run: 513 killed, 52 survived. Every survivor has been triaged; none changes an
-allow/deny decision or a verification result. Re-triage only survivors outside these groups:
+Last full run (policy `1.1.0`, v0.2 adapter `1.1.0` normalizing `source_repo`): 622 mutants,
+565 killed, 57 survived. Every survivor has been triaged; none changes an allow/deny decision
+or a verification result, and none is in the cert cross-check, runner-selection or
+`source_repo` normalization logic. Re-triage only survivors outside these groups:
 
 - **Equivalent (17)** - no test can tell them apart from the original: `rsplit("/", 1)[-1]`
   vs `[+1]` or no maxsplit (`predicate_version`), `split("@", 1)` vs no or a larger maxsplit
-  (`_strip_git_ref`), dropping an explicit `=None` that is already the model default, the
+  (`strip_git_ref`), dropping an explicit `=None` that is already the model default, the
   temp-file suffix in `RawEnvelopeStore.put`, `None` vs `""` as a not-a-dict sentinel in
-  `without_paths`, and in `verifier.py` `offline=None`, an always-true `if uris`, and dropping
-  `asn1Spec` (DER is self-tagged).
-- **Message and label text (29)** - denial reasons in `policy/evaluate.py`, exception messages
-  in `normalize/`, and the FastAPI app title. Human-facing wording; pinning it would make tests
+  `without_paths`, and in `verifier.py` an always-true `if uris` and dropping `asn1Spec` (DER
+  is self-tagged).
+- **Import-time only (1)** - `_fulcio_oid` in `verifier.py` only runs to build module
+  constants, at import, before mutmut switches a mutant on.
+- **Message and label text (33)** - denial reasons in `policy/evaluate.py` (including whether
+  the "cannot confirm" reason mentions the reusable-workflow signer), exception messages in
+  `normalize/`, and the FastAPI app title. Human-facing wording; pinning it would make tests
   brittle for little value.
 - **Demo bootstrap (5)** - `.get` defaults the real fixtures never reach, and `store=None`,
   which survives because nothing reads `DemoData.store`.
-- **`_strip_git_ref`: `split` vs `rsplit` (1)** - they differ only for a URI containing two
-  `@`s. GitHub URIs never do, but a URI with userinfo (`user@host`) would be stripped wrongly
-  by the current `split`. Known, not fixed.
+- **`strip_git_ref`: `split` vs `rsplit` (1)** - they differ only for a URI containing two
+  `@`s, which GitHub URIs never do. Neither is right in general: `split` mangles a URI with
+  userinfo and a ref (`user@host/repo@ref`), `rsplit` one with userinfo and no ref. The fix is
+  to parse the URI rather than split on `@`. Known, not fixed.
 
 ## Stack
 

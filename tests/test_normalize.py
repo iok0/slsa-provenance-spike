@@ -41,7 +41,7 @@ def test_adapt_v0_2_matches_real_scorecard_fixture():
     assert record.build_type == (
         "https://github.com/slsa-framework/slsa-github-generator/generic@v1"
     )
-    assert record.source_repo == "git+https://github.com/ossf/scorecard@refs/tags/v5.5.0"
+    assert record.source_repo == "https://github.com/ossf/scorecard"
     assert record.source_revision == "c395761df6afe1a69e476bc60a013a94bcbc153f"
     assert record.invocation_id == "24860294948-1"
 
@@ -50,7 +50,10 @@ def test_adapt_v0_2_matches_real_scorecard_fixture():
     assert record.finished_at is None
 
     assert len(record.dependencies) == 1
-    assert record.dependencies[0].uri == record.source_repo
+    # The ref stripped from source_repo survives here, verbatim.
+    assert record.dependencies[0].uri == (
+        "git+https://github.com/ossf/scorecard@refs/tags/v5.5.0"
+    )
     assert record.dependencies[0].digest == {
         "sha1": "c395761df6afe1a69e476bc60a013a94bcbc153f"
     }

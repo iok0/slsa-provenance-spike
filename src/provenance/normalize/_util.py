@@ -1,4 +1,4 @@
-"""Shared helper for building `raw_unmapped`.
+"""Shared helpers: building `raw_unmapped`, and stripping a git URI's ref.
 
 Not a general-purpose deep-diff tool — just enough to remove the exact
 leaf keys an adapter claimed, so what's left is "everything this adapter
@@ -34,3 +34,12 @@ def without_paths(obj: dict[str, Any], paths: Sequence[Sequence[str]]) -> dict[s
         if isinstance(node, dict):
             node.pop(leaf, None)
     return result
+
+
+def strip_git_ref(uri: str) -> str:
+    """"git+https://github.com/astral-sh/ruff@refs/heads/main" ->
+    "https://github.com/astral-sh/ruff" — exact-match only, see v1_0.py's
+    module docstring on what this does not normalize. Shared by the
+    adapters to put `source_repo` in its canonical form."""
+    uri = uri.removeprefix("git+")
+    return uri.split("@", 1)[0]

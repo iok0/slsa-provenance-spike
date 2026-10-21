@@ -30,11 +30,33 @@ from sigstore.errors import VerificationError as SigstoreVerificationError
 from sigstore.models import Bundle
 from sigstore.verify import Verifier, policy
 
-from provenance.models.verification import VerificationRecord
+from provenance.models.verification import CertClaims, VerificationRecord
+
+
+def _fulcio_oid(n: int) -> ObjectIdentifier:
+    return ObjectIdentifier(f"1.3.6.1.4.1.57264.1.{n}")
+
 
 # Fulcio's DER-encoded OIDC issuer extension (CRYPTOGRAPHY.md's OID table:
 # "current", as opposed to the deprecated plain-string `.1.1`).
-_OIDC_ISSUER_V2_OID = ObjectIdentifier("1.3.6.1.4.1.57264.1.8")
+_OIDC_ISSUER_V2_OID = _fulcio_oid(8)
+
+# CertClaims field -> Fulcio extension, all DER-encoded UTF8Strings like `.8`.
+_CERT_CLAIM_OIDS = {
+    "build_signer_uri": _fulcio_oid(9),
+    "runner_environment": _fulcio_oid(11),
+    "source_repo_uri": _fulcio_oid(12),
+    "source_repo_digest": _fulcio_oid(13),
+    "build_config_uri": _fulcio_oid(18),
+}
+
+
+def _utf8_extension(cert: Certificate, oid: ObjectIdentifier) -> str | None:
+    try:
+        ext = cert.extensions.get_extension_for_oid(oid).value
+        return str(der_decode(ext.value, asn1Spec=UTF8String())[0])
+    except Exception:
+        return None
 
 
 def _extract_identity(cert: Certificate) -> tuple[str | None, str | None]:
@@ -43,7 +65,6 @@ def _extract_identity(cert: Certificate) -> tuple[str | None, str | None]:
     whatever certificate Fulcio issued, not asserted by us.
     """
     identity: str | None = None
-    issuer: str | None = None
     try:
         san = cert.extensions.get_extension_for_oid(
             ExtensionOID.SUBJECT_ALTERNATIVE_NAME
@@ -52,12 +73,15 @@ def _extract_identity(cert: Certificate) -> tuple[str | None, str | None]:
         identity = uris[0] if uris else None
     except Exception:
         pass
-    try:
-        ext = cert.extensions.get_extension_for_oid(_OIDC_ISSUER_V2_OID).value
-        issuer = str(der_decode(ext.value, asn1Spec=UTF8String())[0])
-    except Exception:
-        pass
-    return identity, issuer
+    return identity, _utf8_extension(cert, _OIDC_ISSUER_V2_OID)
+
+
+def _extract_cert_claims(cert: Certificate) -> CertClaims:
+    """Best-effort, like `_extract_identity`: an absent or undecodable
+    extension is `None`, never a crash."""
+    return CertClaims(
+        **{field: _utf8_extension(cert, oid) for field, oid in _CERT_CLAIM_OIDS.items()}
+    )
 
 
 def verify_from_raw(
@@ -86,6 +110,7 @@ def verify_from_raw(
         raw_digest=raw_digest,
         identity=identity,
         issuer=issuer,
+        cert_claims=_extract_cert_claims(bundle.signing_certificate),
         verified_at=datetime.now(timezone.utc),
         trust_root=trust_root_label,
     )

@@ -13,6 +13,36 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class CertClaims(BaseModel):
+    """CI claims Fulcio copied out of the signer's OIDC token into the leaf
+    cert (OIDs in CRYPTOGRAPHY.md's quick reference). Fulcio vouches for
+    these — they came from the IdP's signed token, not from the signer —
+    which is why EVALUATE prefers them over the predicate's self-asserted
+    equivalents wherever both exist.
+
+    Read off the cert regardless of verification outcome, like `identity`:
+    a fact about what the cert says, only as trustworthy as
+    `fully_verified`. Each is `None` when the extension is absent (a
+    non-GitHub issuer, or a Fulcio too old to emit it).
+
+    Scope caveat on `runner_environment`: it describes the job that
+    requested the cert. When the signer is a reusable workflow
+    (`build_signer_uri != build_config_uri`), that's the reusable
+    workflow's own job, not the caller's build job.
+    """
+
+    build_signer_uri: str | None = None
+    """`.9` — the workflow that requested the cert; equals the SAN on GitHub."""
+    runner_environment: str | None = None
+    """`.11` — `github-hosted` / `self-hosted`."""
+    source_repo_uri: str | None = None
+    """`.12` — the repository the workflow run belongs to (the caller's)."""
+    source_repo_digest: str | None = None
+    """`.13` — the commit the run was triggered at."""
+    build_config_uri: str | None = None
+    """`.18` — the top-level (calling) workflow file at its ref."""
+
+
 class VerificationRecord(BaseModel):
     """Outcome of verifying one raw envelope's DSSE signature over PAE.
 
@@ -40,6 +70,8 @@ class VerificationRecord(BaseModel):
     this record), not VERIFY's — which is also why verification is run with
     sigstore-python's `UnsafeNoOp` policy (crypto-only, no identity
     assertion) rather than asserting an expected identity here.
+    `cert_claims` is the same kind of fact, for the rest of the cert's CI
+    claims (see CertClaims).
     """
 
     raw_digest: str
@@ -51,6 +83,7 @@ class VerificationRecord(BaseModel):
 
     identity: str | None = None
     issuer: str | None = None
+    cert_claims: CertClaims = CertClaims()
 
     verified_at: datetime
     trust_root: str

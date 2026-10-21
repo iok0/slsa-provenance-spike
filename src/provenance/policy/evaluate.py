@@ -63,19 +63,52 @@ an acceptable issuer self-assert its way past the allowlist — the same
 "downstream layer implying more certainty than the layer beneath earned"
 mistake the rest of this codebase is built to avoid. So `_evaluate_item`
 requires `builder_id == item.verification.identity` (the cert SAN) before
-trusting an allowlist hit at all. For both real fixtures the two are
-equal by construction — GitHub-native `attest-build-provenance` and
-slsa-github-generator's reusable workflow both run in an isolated context
-the calling job can't write to — but the check exists for the builder
-that doesn't offer that isolation, not for these two.
+trusting an allowlist hit at all. Both real fixtures pass it, but for
+different reasons: slsa-github-generator's reusable workflow signs in a
+job the caller can't write to, while `attest-build-provenance` runs in
+the calling job itself and is only equal because the action writes
+`builder_id` honestly — any other step in that job could sign a
+predicate claiming something else (see the README).
+
+## Prefer what the cert vouches for over what the predicate says
+
+Fulcio copies CI claims out of GitHub's signed OIDC token into the leaf
+cert (`VerificationRecord.cert_claims`); the predicate's equivalents are
+the signer's own say-so. So where both exist the cert decides, and the
+predicate is only a cross-check — a predicate contradicting its own
+cert is a DENY, since an honest builder can't produce that (on the
+real fixtures, every pair agrees). Runner environment, source repo and
+source revision all have a cert equivalent.
+
+One limit, from the real scorecard fixture: the cert's runner claim
+describes the job that requested the cert. That's the build job only
+when the signer *is* the calling workflow (cert `.9 == .18`, as for
+`attest-build-provenance`). For a reusable workflow (slsa-github-
+generator) it's the generator's own job — the caller built the artifact
+elsewhere and passed hashes in — so it neither confirms the build's
+runner nor is it comparable with the predicate's, and is ignored here.
+So is the predicate's runner claim in that case: it's written by a step
+in the same reusable workflow (e.g. `attest-build-provenance` called from
+one), so it has the same scope problem and is self-asserted on top. A
+reusable-workflow signer is therefore "cannot confirm" outright. Only
+when the cert doesn't say who signed (no `.9`/`.18`, e.g. a non-GitHub
+issuer) does the predicate's claim stand alone, as in policy `1.0.0`.
+
+The source cross-check assumes the predicate's source *is* the workflow
+run's repo — true by construction for both allow-listed builders. A
+builder whose source can legitimately differ would need its own rule.
 """
 
 from __future__ import annotations
 
 from provenance.models.evidence import EvidenceItem
+from provenance.models.verification import CertClaims
 from provenance.policy.models import Decision, PolicyOutcome
 
-POLICY_VERSION = "1.0.0"
+# 1.1.0: runner environment read from the cert where it describes the
+# build job, and from neither the cert nor the predicate when a reusable
+# workflow signed; predicate claims cross-checked against the cert.
+POLICY_VERSION = "1.1.0"
 
 # Hand-seeded, same spirit as associate.py's stub artifact table — a
 # maintained allowlist in production, a fixed dict here. Maps builder_id
@@ -99,21 +132,73 @@ _REQUIRED_LEVEL = 3
 _GHA_WORKFLOW_BUILD_TYPE = "https://actions.github.io/buildtypes/workflow/v1"
 
 
-def _confirmed_github_hosted(item: EvidenceItem) -> bool | None:
-    """True if this attestation's runner_environment is confirmed
-    github-hosted, False if confirmed otherwise, None if this evidence
-    source doesn't expose the signal at all (see module docstring)."""
+def _signer_is_calling_workflow(claims: CertClaims) -> bool:
+    """True when the cert was requested by the top-level workflow itself,
+    not a reusable workflow it called — the only case where the cert's
+    runner claim describes the build job (see module docstring)."""
+    return claims.build_signer_uri is not None and (
+        claims.build_signer_uri == claims.build_config_uri
+    )
+
+
+def _signer_is_reusable_workflow(claims: CertClaims) -> bool:
+    """True when the cert positively shows a reusable workflow as signer
+    (`.9 != .18`) — neither its runner claim nor the predicate's then
+    describes the build job (see module docstring). False when either
+    extension is absent: the cert doesn't say."""
+    return (
+        claims.build_signer_uri is not None
+        and claims.build_config_uri is not None
+        and claims.build_signer_uri != claims.build_config_uri
+    )
+
+
+def _predicate_runner_environment(item: EvidenceItem) -> str | None:
     if item.provenance.build_type != _GHA_WORKFLOW_BUILD_TYPE:
         return None
-    runner_environment = (
+    return (
         item.provenance.raw_unmapped.get("buildDefinition", {})
         .get("internalParameters", {})
         .get("github", {})
         .get("runner_environment")
     )
-    if runner_environment is None:
+
+
+def _runner_environment(item: EvidenceItem) -> tuple[str, str] | None:
+    """The build's runner environment, and what vouches for it: the cert
+    when it describes the build job, else the predicate. `None` if neither
+    exposes the signal, or if a reusable workflow signed and so neither
+    describes the build (see module docstring)."""
+    claims = item.verification.cert_claims
+    if _signer_is_reusable_workflow(claims):
         return None
-    return runner_environment == "github-hosted"
+    if claims.runner_environment is not None and _signer_is_calling_workflow(claims):
+        return claims.runner_environment, "per the Fulcio cert"
+    predicate_value = _predicate_runner_environment(item)
+    if predicate_value is None:
+        return None
+    return predicate_value, "per the provenance predicate"
+
+
+def _cert_contradictions(item: EvidenceItem) -> list[str]:
+    """Predicate claims that disagree with the cert's equivalent."""
+    claims = item.verification.cert_claims
+    pairs = [
+        ("source_repo", item.provenance.source_repo, claims.source_repo_uri),
+        ("source_revision", item.provenance.source_revision, claims.source_repo_digest),
+    ]
+    if _signer_is_calling_workflow(claims):
+        pairs.append(
+            ("runner_environment", _predicate_runner_environment(item), claims.runner_environment)
+        )
+    return [
+        f"{item.raw_digest}: predicate {name} {predicate_value!r} contradicts "
+        f"the Fulcio cert's {cert_value!r}"
+        for name, predicate_value, cert_value in pairs
+        if predicate_value is not None
+        and cert_value is not None
+        and predicate_value != cert_value
+    ]
 
 
 def _evaluate_item(item: EvidenceItem) -> list[str]:
@@ -143,6 +228,8 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
         )
         return reasons
 
+    reasons.extend(_cert_contradictions(item))
+
     claimed_level = _BUILDER_ALLOWLIST.get(builder_id)
     if claimed_level is None:
         reasons.append(f"{item.raw_digest}: builder {builder_id!r} not in builder allowlist")
@@ -152,20 +239,31 @@ def _evaluate_item(item: EvidenceItem) -> list[str]:
             f"{claimed_level}, required {_REQUIRED_LEVEL}"
         )
     else:
-        confirmed = _confirmed_github_hosted(item)
-        if confirmed is None:
+        runner = _runner_environment(item)
+        if runner is None:
+            claims = item.verification.cert_claims
+            cert_note = (
+                f" (signed by reusable workflow {claims.build_signer_uri!r}: "
+                "any runner_environment, in the cert or the predicate, "
+                "describes that workflow's own job, not the build)"
+                if _signer_is_reusable_workflow(claims)
+                else ""
+            )
             reasons.append(
                 f"{item.raw_digest}: builder {builder_id!r}'s claimed level "
                 f"{claimed_level} depends on runner isolation that "
                 f"{item.provenance.predicate_type} evidence does not expose "
-                "a signal for — cannot confirm"
+                f"a signal for{cert_note} — cannot confirm"
             )
-        elif confirmed is False:
-            reasons.append(
-                f"{item.raw_digest}: builder {builder_id!r}'s claimed level "
-                f"{claimed_level} is documented for GitHub-hosted runners; "
-                "this attestation's runner_environment was not github-hosted"
-            )
+        else:
+            runner_environment, vouched_by = runner
+            if runner_environment != "github-hosted":
+                reasons.append(
+                    f"{item.raw_digest}: builder {builder_id!r}'s claimed level "
+                    f"{claimed_level} is documented for GitHub-hosted runners; "
+                    f"this attestation's runner_environment was not github-hosted "
+                    f"({vouched_by})"
+                )
 
     return reasons
 

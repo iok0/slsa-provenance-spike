@@ -36,6 +36,7 @@ from pathlib import Path
 import pytest
 from sigstore.verify import Verifier
 
+from provenance.models.verification import CertClaims
 from provenance.raw_store.store import RawEnvelopeStore, digest_of
 from provenance.verify.verifier import verify_from_raw
 
@@ -121,6 +122,17 @@ def test_verify_from_raw_succeeds_on_real_bundle(store):
     )
     assert record.issuer == "https://token.actions.githubusercontent.com"
 
+    # attest-build-provenance signs from the calling workflow itself, so
+    # the signer and build config are the same workflow, and the runner
+    # claim is the build job's — self-hosted, matching the predicate.
+    assert record.cert_claims == CertClaims(
+        build_signer_uri=record.identity,
+        runner_environment="self-hosted",
+        source_repo_uri="https://github.com/astral-sh/ruff",
+        source_repo_digest="b5dba861cc38e3f7fb4524c9ceba3e01a474ea13",
+        build_config_uri=record.identity,
+    )
+
 
 def test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version(store):
     """The other half of demo moment 1's pair: a real SLSA v0.2 bundle,
@@ -137,6 +149,20 @@ def test_verify_from_raw_succeeds_on_second_real_bundle_different_slsa_version(s
         ".github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"
     )
     assert record.issuer == "https://token.actions.githubusercontent.com"
+
+    # Signed by the reusable generator workflow (.9, = the SAN) on behalf of
+    # scorecard's own goreleaser workflow (.18): the runner claim here is
+    # the generator job's, not the build's.
+    assert record.cert_claims == CertClaims(
+        build_signer_uri=record.identity,
+        runner_environment="github-hosted",
+        source_repo_uri="https://github.com/ossf/scorecard",
+        source_repo_digest="c395761df6afe1a69e476bc60a013a94bcbc153f",
+        build_config_uri=(
+            "https://github.com/ossf/scorecard/.github/workflows/goreleaser.yaml"
+            "@refs/tags/v5.5.0"
+        ),
+    )
 
     # Different builder from the ruff fixture above, on purpose — this is
     # what makes it a real convergence test later, not two copies of the
