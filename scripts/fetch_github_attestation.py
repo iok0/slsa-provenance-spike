@@ -14,7 +14,7 @@ Saves:
     <out>/bundle.json   — the raw Sigstore bundle, exactly as returned by GitHub
     <out>/meta.json     — provenance metadata about how/when this was fetched
 
-The bundle.json is the raw evidence (the README's "authoritative, immutable"
+The bundle.json is the raw evidence (DESIGN.md's "authoritative, immutable"
 layer) — do not hand-edit it. Re-serializing the *outer* JSON structure is
 safe (doesn't affect PAE verification, which is computed over the *decoded*
 payload bytes referenced by the inner base64 string); this script does not

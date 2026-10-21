@@ -59,7 +59,7 @@ def test_adapt_v0_2_matches_real_scorecard_fixture():
     }
 
     # raw_unmapped keeps what wasn't claimed — the huge GH webhook payload
-    # lives here, unclaimed but not lost (see the README's size note).
+    # lives here, unclaimed but not lost (see DESIGN.md's size note).
     assert "environment" in record.raw_unmapped["invocation"]
     assert "github_event_payload" in record.raw_unmapped["invocation"]["environment"]
     assert "completeness" in record.raw_unmapped["metadata"]

@@ -1,6 +1,6 @@
 # Testing
 
-How the suite is put together, the full test list, and mutation-testing results. The README
+How the suite is put together, the full test list, and mutation-testing results. DESIGN.md
 quotes the tests that matter for the demo; this is the rest.
 
 ## Real vs. constructed evidence
@@ -20,7 +20,7 @@ Plus one unit test that builds a throwaway self-signed cert, to check that ident
 claims come back `None` (absent), not empty strings, when the Fulcio extensions are missing.
 
 The real-fixture verification tests fetch the live TUF trust root, so they need the network -
-see the README's "present, not hypothetical, risk" section.
+see DESIGN.md's "A present risk" section.
 
 ## Full suite (58 tests)
 

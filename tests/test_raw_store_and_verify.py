@@ -1,6 +1,6 @@
 """Deep dive 1 (built spine): raw-preserving store + verify-from-raw.
 
-Two things get proved here, matching the README's demo moments:
+Two things get proved here, matching DESIGN.md's demo moments:
 
 1. A real, independently-signed Sigstore bundle verifies when read back
    from the raw store (not from the original file handle) — proves
@@ -22,7 +22,7 @@ on the same two real bundles, not different ones for each claim:
 - tests/fixtures/bundles/scorecard-5.5.0-darwin-amd64-slsa-v0.2/ — SLSA
   v0.2, builder = slsa-framework/slsa-github-generator's reusable workflow
   (a different builder identity *and* a different predicate shape — see
-  README's v0.2/v1.0 table). Fetched read-only via a plain HTTPS GET of
+  DESIGN.md's v0.2/v1.0 table). Fetched read-only via a plain HTTPS GET of
   the public release asset; see meta.json for exactly which line of that
   asset this is and why.
 """
@@ -197,7 +197,7 @@ def test_byte_flip_breaks_verification(store):
     tampered_raw = json.dumps(envelope).encode()
 
     # Tampered bytes get their own content address — this is a *different*
-    # raw record, exactly as the README's raw-store model says it should be.
+    # raw record, exactly as DESIGN.md's raw-store model says it should be.
     tampered_digest = store.put(tampered_raw)
     assert tampered_digest != digest
 

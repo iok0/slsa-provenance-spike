@@ -1,9 +1,9 @@
 """ASSOCIATE: resolve an evidence-side digest to a platform artifact.
 
 Deliberately one thin function against a hand-seeded stub table, not a
-subsystem with its own tests (see README's ASSOCIATE section) — the
+subsystem with its own tests (see DESIGN.md's ASSOCIATE section) — the
 design is real, the code is a stand-in on purpose. Three concerns the
-README names in full but this function does not implement:
+DESIGN.md names in full but this function does not implement:
 
 - **Late-binding.** Attestation and artifact can arrive independently and
   out of order; a real implementation resolves when both sides exist,

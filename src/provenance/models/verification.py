@@ -1,6 +1,6 @@
 """The structured verification record.
 
-Design intent (see the README): verification result is a structured record,
+Design intent (see DESIGN.md): verification result is a structured record,
 not a boolean. Field names match what sigstore-python surfaces (see
 CRYPTOGRAPHY.md's verification flow) so the record stays legible against
 the library producing it, not a paraphrase of it.
@@ -61,7 +61,7 @@ class VerificationRecord(BaseModel):
     attributed to one check from a typed signal (see CRYPTOGRAPHY.md).
     Collapsing "unknown" into "failed" would let this record imply more
     certainty than verification actually earned, which is precisely the
-    discipline the README's evidence→facts→decisions model is about.
+    discipline DESIGN.md's evidence→facts→decisions model is about.
 
     `identity` / `issuer` are read off the leaf certificate's SAN and OIDC
     issuer extension regardless of whether verification passed — they are

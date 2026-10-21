@@ -10,7 +10,7 @@ that rather than the more readable version some docs use.
 `source_repo` / `source_revision` extraction is genuinely build-type-
 specific in v1.0 (a SLSA v1.0 predicate's `externalParameters` shape is
 defined by whoever owns the buildType, not by the SLSA spec itself) — see
-README. This module only implements the one buildType in evidence,
+DESIGN.md. This module only implements the one buildType in evidence,
 GitHub's `actions.github.io/buildtypes/workflow/v1`: source repo comes
 from `externalParameters.workflow.repository`, source revision from the
 `resolvedDependencies[]` entry whose URI matches that repository. Any

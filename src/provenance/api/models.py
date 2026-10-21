@@ -25,7 +25,7 @@ class ProvenanceResponse(BaseModel):
 
     provenance_records: list[EvidenceItem]
     """A list, not a single record — provenance cardinality (1:1 vs
-    1:many per artifact) is an open question the README names rather
+    1:many per artifact) is an open question DESIGN.md names rather
     than resolves; returning a list doesn't presuppose an answer by
     picking a "primary" record when there's more than one."""
 

@@ -1,6 +1,6 @@
 """PAE / DSSE verification via sigstore-python, sourced from raw store bytes.
 
-Design intent (see the README): cryptographic verification only —
+Design intent (see DESIGN.md): cryptographic verification only —
 signature over PAE, cert chain to the Fulcio root, SCT, Rekor inclusion.
 Identity is *extracted* from
 the cert and recorded as a fact; deciding whether that identity is trusted
@@ -10,7 +10,7 @@ this layer imply more than it verified). Concretely: we verify with
 sigstore-python's `policy.UnsafeNoOp()` — its own name for "prove the
 crypto, assert nothing about who signed it" — deliberately, not by omission.
 
-TODO (noted in the README, not solved here): `Verifier.production()`
+TODO (noted in DESIGN.md, not solved here): `Verifier.production()`
 fetches the *current* TUF trust root over the network. Deterministic,
 offline tests need a pinned historical trust-root snapshot instead — captured
 bundles rot as certs expire and roots rotate. This module takes an

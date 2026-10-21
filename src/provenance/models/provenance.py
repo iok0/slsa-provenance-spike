@@ -1,6 +1,6 @@
 """The canonical provenance model — NORMALISE's output shape.
 
-Field set matches the README's candidate list, but every extraction rule
+Field set matches DESIGN.md's candidate list, but every extraction rule
 behind these fields is pinned to what the two real captured fixtures
 actually contain (tests/fixtures/bundles/), not to the SLSA spec from
 memory. See the two adapters (normalize/v0_2.py, normalize/v1_0.py) for the
@@ -34,7 +34,7 @@ class Dependency(BaseModel):
 class CanonicalProvenance(BaseModel):
     """One canonical projection of a verified SLSA provenance predicate.
 
-    This is the "facts" layer (see README's evidence→facts→decisions
+    This is the "facts" layer (see DESIGN.md's evidence→facts→decisions
     model) — it must never be surfaced without the VerificationRecord for
     the same raw record attached, or it implies more certainty than
     normalization alone earned.
@@ -108,6 +108,6 @@ class CanonicalProvenance(BaseModel):
     completeness guarantee (that's the raw record itself, stored
     verbatim). Can be non-trivially sized: e.g. v0.2's
     `invocation.environment.github_event_payload` alone measured ~8.5KB
-    on the real scorecard fixture. See the README's "raw_unmapped bulk
+    on the real scorecard fixture. See DESIGN.md's "raw_unmapped bulk
     exclusion" open question for why that isn't fixed by excluding it
     here."""

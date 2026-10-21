@@ -1,7 +1,7 @@
 """One piece of evidence about an artifact: verified + normalized.
 
 Shared shape — this is both what the API returns per attestation and
-what EVALUATE's input document is built from (see README: normalized
+what EVALUATE's input document is built from (see DESIGN.md: normalized
 facts + verification result + pointer to raw, per attestation in the
 set). One definition, not two near-identical ones.
 """

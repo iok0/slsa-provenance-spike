@@ -1,6 +1,6 @@
 """Raw-preserving, content-addressed store for ingested attestation bundles.
 
-This is the built spine's central design decision (see the README): whatever
+This is the built spine's central design decision (see DESIGN.md): whatever
 bytes are ingested are stored verbatim, addressed by the digest of
 those exact bytes, and never rewritten. Re-verification — against a rotated
 trust root years later, or with a newer normalizer version — must always be
@@ -20,7 +20,7 @@ def digest_of(raw_bytes: bytes) -> str:
     """The content address for raw bytes: a sha256 hex digest.
 
     This is the association basis's strong-digest floor applied to storage
-    identity too — sha256 only, deliberately (see the README's discussion
+    identity too — sha256 only, deliberately (see DESIGN.md's discussion
     of association).
     """
     return hashlib.sha256(raw_bytes).hexdigest()
@@ -29,7 +29,7 @@ def digest_of(raw_bytes: bytes) -> str:
 class RawEnvelopeStore:
     """Content-addressed, effectively-immutable store of raw envelope bytes.
 
-    Production seam (see the README): this becomes S3, tenant-partitioned.
+    Production seam (see DESIGN.md): this becomes S3, tenant-partitioned.
     The interface is deliberately three methods so that swap is a backend
     change behind an unchanged call site.
     """
@@ -47,7 +47,7 @@ class RawEnvelopeStore:
         """Store raw bytes verbatim.
 
         Idempotent: storing identical bytes twice is a no-op — dedupe by
-        envelope digest (see the README's ingest section) — the digest of
+        envelope digest (see DESIGN.md's ingest section) — the digest of
         the content *is* the dedupe key, there's no separate check.
 
         Returns the content digest — the durable identifier for this raw

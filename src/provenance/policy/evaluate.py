@@ -1,6 +1,6 @@
 """Per-subject (admission-time) policy: a plain Python predicate function.
 
-No engine (no OPA/Cedar/CEL) — struck deliberately, see README. The
+No engine (no OPA/Cedar/CEL) — struck deliberately, see DESIGN.md. The
 interesting artifact is the input document (EvidenceItem, from
 provenance.models.evidence) and the decision contract (Decision), not
 this function; it can be replaced by a real engine later without
@@ -11,7 +11,7 @@ attestation in isolation — some admission-relevant facts only exist
 across the set. "Provenance present but SBOM missing" is the
 motivating example for why this has to be set-level at all, but it's
 illustrative only: no SBOM evidence type exists in this build (see the
-README), so there's no code path that could check it. The one such
+DESIGN.md), so there's no code path that could check it. The one such
 check actually implemented is two provenance attestations disagreeing
 on builder identity, and even that is only exercised by a constructed
 test — both real fixtures are singleton evidence sets, so no real
@@ -20,7 +20,7 @@ fixture reaches it either.
 ## The SLSA-level check, and what the real fixtures forced
 
 "SLSA level met" is not a field in any predicate — it's asserted
-out-of-band by whoever operates the build platform (README). So level is
+out-of-band by whoever operates the build platform (DESIGN.md). So level is
 determined by mapping the verified `builder_id` against a maintained
 allowlist below. That mapping alone is insufficient against both real
 fixtures:
@@ -49,7 +49,7 @@ Both cases are treated as "the required level cannot be positively
 confirmed" — fail-closed on missing confirmation, not fail-open: an
 unconfirmed non-falsifiability claim provides no more assurance than no
 claim at all. Run against both real fixtures, this denies both, for two
-different reasons — see the README for why that's a finding to keep,
+different reasons — see DESIGN.md for why that's a finding to keep,
 not a bug to fix.
 
 ## builder_id is only trustworthy if it matches who actually signed
@@ -68,7 +68,7 @@ different reasons: slsa-github-generator's reusable workflow signs in a
 job the caller can't write to, while `attest-build-provenance` runs in
 the calling job itself and is only equal because the action writes
 `builder_id` honestly — any other step in that job could sign a
-predicate claiming something else (see the README).
+predicate claiming something else (see DESIGN.md).
 
 ## Prefer what the cert vouches for over what the predicate says
 

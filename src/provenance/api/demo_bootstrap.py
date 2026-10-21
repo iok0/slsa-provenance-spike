@@ -1,7 +1,7 @@
 """Seed a RawEnvelopeStore + subject-digest index from a list of raw
 bundle files, verifying and normalizing each one once.
 
-This is a stand-in for real INGEST (see README's INGEST section:
+This is a stand-in for real INGEST (see DESIGN.md's INGEST section:
 idempotency, poison payloads, dead-letter — none of that is here), not a
 demo of it. It exists so the API has something real to answer queries
 against, using the exact same verify_from_raw / normalize_from_raw the
